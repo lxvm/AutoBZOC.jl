@@ -1,0 +1,16 @@
+function fig3(; T = [100.0u"K"], T₀=300.0u"K", Z=0.5, Ω=[0.0u"eV"], atol=1e-0u"Å^-1", rtol=1e-4, gauge=Hamiltonian())
+    h = t2gmodel(gauge=Wannier())
+    bz = load_bz(CubicSymIBZ(), one(SMatrix{3,3,Float64,9}) * u"Å")
+    hv = GradientVelocityInterp(h, bz.A; gauge=gauge, coord=Cartesian(), vcomp=Whole())
+
+    falg = QuadGKJL()
+    kalg = IAI()
+    t = first(T)
+    η = t^2*u"k_au"*pi/(Z*T₀)
+    Σ = ConstScalarSelfEnergy(-im*η)
+    β = 1/uconvert(unit(eltype(Ω)), u"k_au"*t)
+    w = AutoBZCore.workspace_allocate_vec(hv, AutoBZCore.period(hv))
+    integrand = OpticalConductivityIntegrand(falg, w, Σ, β, abstol=atol/det(bz.B)/nsyms(bz), reltol=rtol)
+    solver = IntegralSolver(integrand, bz, kalg, abstol=atol, reltol=rtol)
+    return batchsolve(solver, Ω)
+end
