@@ -13,14 +13,14 @@ function interpolatedensity(; t=-0.25u"eV", t′=0.05u"eV", Δ=0.0u"eV",
     β = 1/uconvert(unit(t), u"k_au"*T[1])
     integrand = ElectronDensityIntegrand(falg, h, Σ, β, abstol=atol/det(bz.B)/nsyms(bz), reltol=rtol)
     solver = IntegralSolver(integrand, bz, kalg, abstol=atol, reltol=rtol)
-    return hchebinterp(x -> solver(μ=x)/det(bz.B), μlims..., atol=10*atol/det(bz.B), rtol=rtol*10)
+    return hchebinterp(x -> upreferred(solver(μ=x)/det(bz.B)), μlims..., atol=10*atol/det(bz.B), rtol=rtol*10)
     # batchsolve(solver, [10.0u"eV"])
 end
 
 
 function findchempot(density; μlims=(-2.0u"eV", 2.0u"eV"), ν=2.0, nsp=2, alg=Falsi(), atol=1e-5, rtol=1e-5)
     u = oneunit(eltype(μlims))
-    # uμlims = sort(map(x -> x/u, μlims))
-    prob = IntervalNonlinearProblem((x, ν) -> density(x)-ν, μlims, ν/nsp)
+    uμlims = sort(map(x -> x/u, μlims))
+    prob = IntervalNonlinearProblem((x, ν) -> density(u*x)-ν, uμlims, ν/nsp)
     return solve(prob, alg, abstol=atol, reltol=rtol).u*u
 end
