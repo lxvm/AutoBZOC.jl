@@ -20,7 +20,7 @@ function fig3a(; scalarize=real∘tr, scalarize_text="Tr σ",  t=-0.25u"eV", t�
 
     Ωintra = uconvert(unit(t), Ωintra)
     Ωinter = uconvert(unit(t), Ωinter)
-    @show η = uconvert(unit(t), T[1]^2*u"k_au"*pi/(Z*T₀))
+    η = uconvert(unit(t), T[1]^2*u"k_au"*pi/(Z*T₀))
     Σ = ConstScalarSelfEnergy(-im*η)
     β = 1/uconvert(unit(t), u"k_au"*T[1])
     μintra = -Ωintra/2
@@ -115,11 +115,11 @@ function fig3a(; scalarize=real∘tr, scalarize_text="Tr σ",  t=-0.25u"eV", t�
     linkyaxes!(axfinter, axinter)
     hideydecorations!(axfinter, ticks = false, grid = false)
 
-    dat_f_intra = [oc_fintegrand_intra(f*unit(t), AutoBZCore.NullParameters()) for f in freqs]
-    dat_f_inter = [oc_fintegrand_inter(f*unit(t), AutoBZCore.NullParameters()) for f in freqs]
+    # dat_f_intra = [oc_fintegrand_intra(f*unit(t), AutoBZCore.NullParameters()) for f in freqs]
+    # dat_f_inter = [oc_fintegrand_inter(f*unit(t), AutoBZCore.NullParameters()) for f in freqs]
 
-    lines!(axfintra, ustrip.(uconvert.(u"eV*Å^-1", scalarize.(dat_f_intra))), freqs, color=cintra)
-    lines!(axfinter, ustrip.(uconvert.(u"eV*Å^-1", scalarize.(dat_f_inter))), freqs, color=cinter)
+    # lines!(axfintra, ustrip.(uconvert.(u"eV*Å^-1", scalarize.(dat_f_intra))), freqs, color=cintra)
+    # lines!(axfinter, ustrip.(uconvert.(u"eV*Å^-1", scalarize.(dat_f_inter))), freqs, color=cinter)
 
 
     Legend(fig[1,2],
