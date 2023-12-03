@@ -19,6 +19,7 @@ const default = (;
     μlims = (-2.0u"eV", 2.0u"eV"),
     Ωintra = 0.0u"eV",
     Ωinter = 0.4u"eV",
+    Tseries = ntuple(n -> 2.0 ^ (9-n) * u"K", 1),
     T = 100.0u"K",
     T₀ = 300.0u"K",
     Z = 0.5,
@@ -34,6 +35,9 @@ const default = (;
     cintra = :orange,
     cinter = :green,
     prec = Float64,
+    Nk = 1000,
+    Nω = 1000,
+    NΩ = 2000,
 )
 # Float32 precision not yet working
 

@@ -35,6 +35,9 @@ function fig3a(;
     cinter = default.cinter,
     tolratio = default.tolratio,
     prec = default.prec,
+    Nk = default.Nk,
+    Nω = default.Nω,
+    NΩ = default.NΩ,
 )
 
     bz = load_bz(bzkind, one(SMatrix{3,3,prec,9}) * u"Å")
@@ -73,7 +76,7 @@ function fig3a(;
     basis = Brillouin.KPaths.reciprocalbasis(collect(eachcol(bz.A*u"Å^-1")))
     setting = Ref(Brillouin.LATTICE)
     kp = KPath(pts, paths, basis, setting)
-    kpi = interpolate(kp, 1000)
+    kpi = interpolate(kp, Nk)
 
     alpharamp = range(0, 1, length=256) # log.(10, 9*range(0, 1, length=256) .+ 1)    
     cintragrad = Colors.alphacolor.(Makie.to_colormap(cgrad([cintra, cintra], 100)), alpharamp)
@@ -82,7 +85,7 @@ function fig3a(;
     fig = Figure(resolution=(800,1600))
 
     condlayout = GridLayout()
-    Ωs = range(Ωlims..., length=2000)
+    Ωs = range(Ωlims..., length=NΩ)
     ax = Axis(fig, title="Orbital structure of optical conductivity",
         xlabel="Ω ($(unit(eltype(Ωs))))", xticks=ustrip.(unique(append!(collect(Ωlims), [Ωinter, Ωintra]))),
         ylabel="$(scalarize_text) ($(unit(atol)))", yscale=log10,
@@ -106,7 +109,7 @@ function fig3a(;
     kps = KPathSegment(kpi.basis, kpi.kpaths[1], kpi.labels[1], kpi.setting)
     kloc = cumdists([bz.B*u"Å" * k for k in kps.kpath])
     ωlims = μlims ./ 2 .- chempot
-    freqs = range(ustrip.(ωlims)..., length=1000)
+    freqs = range(ustrip.(ωlims)..., length=Nω)
 
     structurelayout = GridLayout(nrow=4, ncol=2, parent=fig)
 
