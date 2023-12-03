@@ -25,6 +25,7 @@ const default = (;
     Ωlims = (0.0u"eV", 1.0u"eV"),
     σatol = 0.0u"eV^2*Å^-1",
     σrtol = 1e-4,
+    tolratio=100,
     ν = 1.0,
     nsp = 2,
     falg = AuxQuadGKJL(),
@@ -32,7 +33,9 @@ const default = (;
     bzkind = CubicSymIBZ(),
     cintra = :orange,
     cinter = :green,
+    prec = Float64,
 )
+# Float32 precision not yet working
 
 include("makieplots.jl")
 include("model.jl")
