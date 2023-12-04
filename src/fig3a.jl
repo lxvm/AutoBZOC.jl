@@ -50,7 +50,7 @@ function fig3a(;
 
     Ωintra = prec(uconvert(unit(t), Ωintra))
     Ωinter = prec(uconvert(unit(t), Ωinter))
-    η = prec(uconvert(unit(t), T[1]^2*u"k_au"*pi/(Z*T₀)))
+    η = fermi_liquid_scattering(T=T, Z=Z, T₀=T₀, prec=prec)
     Σ = ConstScalarSelfEnergy(-im*η)
     β = prec(1/uconvert(unit(t), u"k_au"*T[1]))
     μintra = -Ωintra/2

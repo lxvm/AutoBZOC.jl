@@ -44,7 +44,7 @@ function interpolateconductivitykw(;
             shift!(h, μ)
             bz = load_bz(bzkind, one(SMatrix{3,3,prec,9}) * u"Å")
             hv = GradientVelocityInterp(h, bz.A; coord=Cartesian(), vcomp=vcomp)
-            η = prec(uconvert(unit(t), T[1]^2*u"k_au"*pi/(Z*T₀)))
+            η = fermi_liquid_scattering(T=T, Z=Z, T₀=T₀, prec=prec)
             Σ = ConstScalarSelfEnergy(-im*η)
             β = prec(1/uconvert(unit(t), u"k_au"*T[1]))
             abstol = atol/tolratio # tighter tolerance for integration than interpolation
@@ -106,7 +106,7 @@ function interpolateconductivitywk(;
             shift!(h, μ)
             bz = load_bz(CubicSymIBZ(), one(SMatrix{3,3,prec,9}) * u"Å")
             hv = GradientVelocityInterp(h, bz.A; coord=Cartesian(), vcomp=vcomp)
-            η = prec(uconvert(unit(t), T[1]^2*u"k_au"*pi/(Z*T₀)))
+            η = fermi_liquid_scattering(T=T, Z=Z, T₀=T₀, prec=prec)
             Σ = ConstScalarSelfEnergy(-im*η)
             β = prec(1/uconvert(unit(t), u"k_au"*T[1]))
             abstol = atol/tolratio # tighter tolerance for integration than interpolation
@@ -170,7 +170,7 @@ function interpolateconductivityk(;
             bz = load_bz(CubicSymIBZ(), one(SMatrix{3,3,prec,9}) * u"Å")
             hv = GradientVelocityInterp(h, bz.A; coord=Cartesian(), vcomp=vcomp)
             w = AutoBZCore.workspace_allocate(hv, AutoBZCore.period(hv), (1, 1, Threads.nthreads()))
-            η = prec(uconvert(unit(t), T[1]^2*u"k_au"*pi/(Z*T₀)))
+            η = fermi_liquid_scattering(T=T, Z=Z, T₀=T₀, prec=prec)
             Σ = ConstScalarSelfEnergy(-im*η)
             β = prec(1/uconvert(unit(t), u"k_au"*T[1]))
             atol = atol / (Ω + 2/β) # compute absolute tolerance for frequency integrand
@@ -236,7 +236,7 @@ function interpolateconductivityw(;
             shift!(h, μ)
             bz = load_bz(CubicSymIBZ(), one(SMatrix{3,3,prec,9}) * u"Å")
             hv = GradientVelocityInterp(h, bz.A; coord=Cartesian(), vcomp=vcomp)
-            η = prec(uconvert(unit(t), T[1]^2*u"k_au"*pi/(Z*T₀)))
+            η = fermi_liquid_scattering(T=T, Z=Z, T₀=T₀, prec=prec)
             Σ = ConstScalarSelfEnergy(-im*η)
             β = prec(1/uconvert(unit(t), u"k_au"*T[1]))
             abstol = atol/tolratio # tighter tolerance for integration than interpolation

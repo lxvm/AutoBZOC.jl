@@ -35,7 +35,7 @@ function interpolatedensity(;
             h = t2gmodel(t=prec(t), t′=prec(t′), Δ=prec(Δ))
             !iszero(Δ) && bzkind isa CubicSymIBZ && error("nonzero CFS breaks cubic symmetry in BZ")
             bz = load_bz(bzkind, one(SMatrix{3,3,prec,9}) * u"Å")
-            η = prec(T[1]^2*u"k_au"*pi/(Z*T₀))
+            η = fermi_liquid_scattering(T=T, Z=Z, T₀=T₀, prec=prec)
             Σ = ConstScalarSelfEnergy(-im*η)
             β = prec(1/uconvert(unit(t), u"k_au"*T[1]))
             abstol = atol*det(bz.B)/tolratio

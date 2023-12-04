@@ -83,3 +83,13 @@ function t2gmodel(; t=-0.25u"eV", t′=0.05u"eV", Δ=0.0u"eV", ndim=nothing, gau
 
     return HamiltonianInterp(AutoBZ.Freq2RadSeries(FourierSeries(similar(H, SM) .= H, period=real(2one(t)*pi))), gauge=gauge)
 end
+
+function fermi_liquid_scattering(;
+    t = default.t,
+    T = default.T,
+    T₀ = default.T₀,
+    Z = default.Z,
+    prec = default.prec,
+)
+    return map(T -> prec(uconvert(unit(t), T^2*u"k_au"*pi/(Z*T₀))), T)
+end

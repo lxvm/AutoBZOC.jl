@@ -15,6 +15,8 @@ function fig3(;
     T₀ = default.T₀,
     Z = default.Z,
     Ωlims = default.Ωlims,
+    Ωintra = default.Ωintra,
+    Ωinter = default.Ωinter,
     atol = default.σatol,
     rtol = default.σrtol,
     ν = default.ν,
@@ -29,13 +31,13 @@ function fig3(;
     Ωs = range(Ωlims..., length=NΩ)
     fig = Figure(resolution=(800,600))
     ax = Axis(fig[1,1], title="Fermi liquid optical conductivity",
-        xlabel="Ω ($(unit(eltype(Ωs))))",
+        xlabel="Ω ($(unit(eltype(Ωs))))", xticks=ustrip.(unique(append!(collect(Ωlims), [Ωinter, Ωintra]))),
         ylabel="$(scalarize_text) ($(unit(atol)))", yscale=log10,
         limits=(ustrip.(Ωlims), nothing),
     )
     Tmax = maximum(Tseries)
     colors = cgrad(colormap)
-    for T in Tseries
+    for T in reverse(sort(Tseries))
         cond = interpolateconductivitykw(vcomp=Whole(), t=t, t′=t′, Δ=Δ, T=T, T₀=T₀, Z=Z, kalg=kalg, falg=falg, natol=natol, nrtol=nrtol, nalg=nalg, bzkind=bzkind,
                 μlims=μlims, ν=ν, nsp=nsp, Ωlims=Ωlims, atol=atol, rtol=rtol, io=io, verb=verb, tolratio=tolratio, prec=prec)
         lines!(ax, ustrip.(Ωs), ustrip.(scalarize.(cond.(Ωs))), label="T=$T", color=colors[T/Tmax])
