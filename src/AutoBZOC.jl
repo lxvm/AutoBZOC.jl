@@ -2,6 +2,7 @@ module AutoBZOC
 
 using LinearAlgebra
 using NonlinearSolve
+using AutoBZ
 using AutoBZCore
 using Unitful, UnitfulAtomic
 
@@ -24,7 +25,7 @@ const default = (;
     T₀ = 300.0u"K",
     Z = 0.5,
     Ωlims = (0.0u"eV", 1.0u"eV"),
-    σatol = 0.0u"eV^2*Å^-1",
+    σatol = 0.0u"Å^-1",
     σrtol = 1e-4,
     tolratio=100,
     ν = 1.0,
@@ -38,6 +39,7 @@ const default = (;
     Nk = 1000,
     Nω = 1000,
     NΩ = 2000,
+    gauge = Hamiltonian(),
 )
 # Float32 precision not yet working
 

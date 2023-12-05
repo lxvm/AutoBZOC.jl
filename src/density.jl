@@ -20,10 +20,11 @@ function interpolatedensity(;
     kalg = default.kalg,
     tolratio = default.tolratio,
     prec = default.prec,
+    gauge = default.gauge,
 )
 
     return jldopen(joinpath(pwd(), "densitycache.jld2"), "a+") do fn
-        id = "t$(t)_t′$(t′)_Δ($Δ)_T($T)_T₀$(T₀)_Z$(Z)_μlims$(μlims)_kalg$(kalg)_falg$(falg)_atol$(atol)_rtol($rtol)_tolratio$(tolratio)_bzkind$(bzkind)_prec$(prec)"
+        id = "t$(t)_t′$(t′)_Δ($Δ)_T($T)_T₀$(T₀)_Z$(Z)_μlims$(μlims)_kalg$(kalg)_falg$(falg)_atol$(atol)_rtol($rtol)_tolratio$(tolratio)_bzkind$(bzkind)_prec$(prec)_gauge$(gauge)"
         if !haskey(fn, id)
             verb && @info "Interpolating density to add to cache" id
             ti = time()
@@ -32,7 +33,7 @@ function interpolatedensity(;
                 ni += n
                 verb && @printf io "\t %.3e s elapsed, sampling %5i points\n" time()-ti n
             end
-            h = t2gmodel(t=prec(t), t′=prec(t′), Δ=prec(Δ))
+            h = t2gmodel(t=prec(t), t′=prec(t′), Δ=prec(Δ), gauge=gauge)
             !iszero(Δ) && bzkind isa CubicSymIBZ && error("nonzero CFS breaks cubic symmetry in BZ")
             bz = load_bz(bzkind, one(SMatrix{3,3,prec,9}) * u"Å")
             η = fermi_liquid_scattering(T=T, Z=Z, T₀=T₀, prec=prec)
@@ -46,10 +47,10 @@ function interpolatedensity(;
                 status(length(x))
                 return upreferred.(batchsolve(solver, x, nthreads=Threads.nthreads())/det(bz.B))
             end
-            fn[id] = hchebinterp(f, map(prec, μlims)..., atol=atol, rtol=rtol)
+            fn[id] = @timed hchebinterp(f, map(prec, μlims)..., atol=atol, rtol=rtol)
             verb && @printf io "Done interpolating after %.3e s, %5i sample points\n" time()-ti ni
         end
-        return fn[id]
+        return fn[id].value
     end
 
 end
@@ -75,8 +76,9 @@ function findchempot(;
     tolratio = default.tolratio,
     bzkind = default.bzkind,
     prec = default.prec,
+    gauge = default.gauge,
 )
-    n = interpolatedensity(; io=io, verb=verb, t=t, t′=t′, Δ=Δ, T=T, T₀=T₀, Z=Z, kalg=kalg, falg=falg, μlims=μlims, bzkind=bzkind, atol=atol, rtol=rtol, tolratio=tolratio, prec=prec)
+    n = interpolatedensity(; io=io, verb=verb, t=t, t′=t′, Δ=Δ, T=T, T₀=T₀, Z=Z, kalg=kalg, falg=falg, μlims=μlims, bzkind=bzkind, atol=atol, rtol=rtol, tolratio=tolratio, prec=prec, gauge=gauge)
     verb && @info "Finding chemical potential"
     ti = time()
     ni = 0

@@ -38,6 +38,7 @@ function fig3a(;
     Nk = default.Nk,
     Nω = default.Nω,
     NΩ = default.NΩ,
+    gauge = default.gauge,
 )
 
     bz = load_bz(bzkind, one(SMatrix{3,3,prec,9}) * u"Å")
@@ -45,8 +46,8 @@ function fig3a(;
     H = t2gmodel(t=prec(t), t′=prec(t′), Δ=prec(Δ), gauge=Wannier())
     chempot = uconvert(unit(t), findchempot(; io=io, verb=verb, t=t, t′=t′, Δ=Δ, T=T, T₀=T₀, Z=Z, μlims=μlims, ν=ν, nsp=nsp, alg=nalg, kalg=kalg, falg=falg, atol=natol, rtol=nrtol, bzkind=bzkind, tolratio=tolratio, prec=prec))
     shift!(H, chempot)
-    hvintra = GradientVelocityInterp(H, bz.A; coord=Cartesian(), vcomp=Intra())
-    hvinter = GradientVelocityInterp(H, bz.A; coord=Cartesian(), vcomp=Inter())
+    hvintra = GradientVelocityInterp(H, bz.A; coord=Cartesian(), vcomp=Intra(), gauge=gauge)
+    hvinter = GradientVelocityInterp(H, bz.A; coord=Cartesian(), vcomp=Inter(), gauge=gauge)
 
     Ωintra = prec(uconvert(unit(t), Ωintra))
     Ωinter = prec(uconvert(unit(t), Ωinter))
@@ -93,13 +94,13 @@ function fig3a(;
     condlayout[1,1] = ax
 
     cond = interpolateconductivitykw(vcomp=Whole(), t=t, t′=t′, Δ=Δ, T=T, T₀=T₀, Z=Z, kalg=kalg, falg=falg, natol=natol, nrtol=nrtol, nalg=nalg, bzkind=bzkind,
-                μlims=μlims, ν=ν, nsp=nsp, Ωlims=Ωlims, atol=atol, rtol=rtol, io=io, verb=verb, tolratio=tolratio, prec=prec)
+                μlims=μlims, ν=ν, nsp=nsp, Ωlims=Ωlims, atol=atol, rtol=rtol, io=io, verb=verb, tolratio=tolratio, prec=prec, gauge=gauge)
 
     condintra = interpolateconductivitykw(vcomp=Intra(), t=t, t′=t′, Δ=Δ, T=T, T₀=T₀, Z=Z, kalg=kalg, falg=falg, natol=natol, nrtol=nrtol, nalg=nalg, bzkind=bzkind,
-                μlims=μlims, ν=ν, nsp=nsp, Ωlims=Ωlims, atol=atol, rtol=rtol, io=io, verb=verb, tolratio=tolratio, prec=prec)
+                μlims=μlims, ν=ν, nsp=nsp, Ωlims=Ωlims, atol=atol, rtol=rtol, io=io, verb=verb, tolratio=tolratio, prec=prec, gauge=gauge)
 
     condinter = interpolateconductivitykw(vcomp=Inter(), t=t, t′=t′, Δ=Δ, T=T, T₀=T₀, Z=Z, kalg=kalg, falg=falg, natol=natol, nrtol=nrtol, nalg=nalg, bzkind=bzkind,
-                μlims=μlims, ν=ν, nsp=nsp, Ωlims=Ωlims, atol=atol, rtol=rtol, io=io, verb=verb, tolratio=tolratio, prec=prec)
+                μlims=μlims, ν=ν, nsp=nsp, Ωlims=Ωlims, atol=atol, rtol=rtol, io=io, verb=verb, tolratio=tolratio, prec=prec, gauge=gauge)
 
     lines!(ax, ustrip.(Ωs), ustrip.(scalarize.(cond.(Ωs))), color=:black, label="whole")
     lines!(ax, ustrip.(Ωs), ustrip.(scalarize.(condintra.(Ωs))), color=cintra, label="inter-band")
@@ -178,15 +179,15 @@ function fig3a(;
     hideydecorations!(axfinter, ticks = false, grid = false)
     
     oc_fintegrand_intra = interpolateconductivityk(vcomp=Intra(), μoffset=μintra, t=t, t′=t′, Δ=Δ, T=T, T₀=T₀, Z=Z, kalg=kalg, falg=falg, natol=natol, nrtol=nrtol, nalg=nalg, bzkind=bzkind,
-            μlims=μlims, ν=ν, nsp=nsp, ωlims=ωlims, Ω=Ωintra, atol=atol, rtol=rtol, io=io, verb=verb, tolratio=tolratio, prec=prec)
+            μlims=μlims, ν=ν, nsp=nsp, ωlims=ωlims, Ω=Ωintra, atol=atol, rtol=rtol, io=io, verb=verb, tolratio=tolratio, prec=prec, gauge=gauge)
     oc_fintegrand_inter = interpolateconductivityk(vcomp=Inter(), μoffset=μinter, t=t, t′=t′, Δ=Δ, T=T, T₀=T₀, Z=Z, kalg=kalg, falg=falg, natol=natol, nrtol=nrtol, nalg=nalg, bzkind=bzkind,
-            μlims=μlims, ν=ν, nsp=nsp, ωlims=ωlims, Ω=Ωinter, atol=atol, rtol=rtol, io=io, verb=verb, tolratio=tolratio, prec=prec)
+            μlims=μlims, ν=ν, nsp=nsp, ωlims=ωlims, Ω=Ωinter, atol=atol, rtol=rtol, io=io, verb=verb, tolratio=tolratio, prec=prec, gauge=gauge)
 
     # dat_f_intra = [oc_fintegrand_intra(f*unit(t), AutoBZCore.NullParameters()) for f in freqs]
     # dat_f_inter = [oc_fintegrand_inter(f*unit(t), AutoBZCore.NullParameters()) for f in freqs]
 
-    lines!(axfintra, ustrip.(uconvert.(u"eV*Å^-1", scalarize.(oc_fintegrand_intra.(unit(t) .* freqs)))), freqs, color=cintra)
-    lines!(axfinter, ustrip.(uconvert.(u"eV*Å^-1", scalarize.(oc_fintegrand_inter.(unit(t) .* freqs)))), freqs, color=cinter)
+    lines!(axfintra, ustrip.(uconvert.(unit(atol)/unit(t), scalarize.(oc_fintegrand_intra.(unit(t) .* freqs)))), freqs, color=cintra)
+    lines!(axfinter, ustrip.(uconvert.(unit(atol)/unit(t), scalarize.(oc_fintegrand_inter.(unit(t) .* freqs)))), freqs, color=cinter)
 
 
     colsize!(structurelayout, 1, Relative(4/5))

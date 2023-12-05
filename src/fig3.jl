@@ -27,6 +27,7 @@ function fig3(;
     tolratio = default.tolratio,
     prec = default.prec,
     NΩ = default.NΩ,
+    gauge = default.gauge,
 )
     Ωs = range(Ωlims..., length=NΩ)
     fig = Figure(resolution=(800,600))
@@ -39,7 +40,7 @@ function fig3(;
     colors = cgrad(colormap)
     for T in reverse(sort(Tseries))
         cond = interpolateconductivitykw(vcomp=Whole(), t=t, t′=t′, Δ=Δ, T=T, T₀=T₀, Z=Z, kalg=kalg, falg=falg, natol=natol, nrtol=nrtol, nalg=nalg, bzkind=bzkind,
-                μlims=μlims, ν=ν, nsp=nsp, Ωlims=Ωlims, atol=atol, rtol=rtol, io=io, verb=verb, tolratio=tolratio, prec=prec)
+                μlims=μlims, ν=ν, nsp=nsp, Ωlims=Ωlims, atol=atol, rtol=rtol, io=io, verb=verb, tolratio=tolratio, prec=prec, gauge=gauge)
         lines!(ax, ustrip.(Ωs), ustrip.(scalarize.(cond.(Ωs))), label="T=$T", color=colors[T/Tmax])
     end
     axislegend(ax)
