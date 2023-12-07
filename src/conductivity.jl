@@ -4,124 +4,94 @@ using Printf
 using StaticArrays
 using FourierSeriesEvaluators: period
 
-function interpolateconductivitykw(;
-    vcomp = Whole(),
-    io = stdout,
-    verb = true,
-    t = default.t,
-    t′ = default.t′,
-    Δ = default.Δ,
-    nalg = default.nalg,
-    natol = default.natol,
-    nrtol = default.nrtol,
-    μlims = default.μlims,
-    T = default.T,
-    T₀ = default.T₀,
-    Z = default.Z,
-    Ωlims = default.Ωlims,
-    atol = default.σatol,
-    rtol = default.σrtol,
-    ν = default.ν,
-    nsp = default.nsp,
-    falg = default.falg,
-    kalg = default.kalg,
-    tolratio = default.tolratio,
-    bzkind = default.bzkind,
-    prec = default.prec,
-    gauge = default.gauge,
-)
+function interpolateconductivity(; kws...)
+    (; kalg) = merge(default, NamedTuple(kws))
+    if kalg isa PTR || kalg isa AutoPTR
+        return interpolateconductivitywk(; kws...)
+    else
+        return interpolateconductivitykw(; kws...)
+    end
+end
 
-    return jldopen(joinpath(pwd(), "conductivitykwcache.jld2"), "a+") do fn
-        id = "t$(t)_t′$(t′)_Δ($Δ)_T($T)_T₀$(T₀)_Z$(Z)_ν$(ν)_nsp$(nsp)_μlims$(μlims)_kalg$(kalg)_falg$(falg)_atol$(atol)_rtol($rtol)_tolratio$(tolratio)_Ωlims$(Ωlims)_vcomp$(vcomp)_bzkind$(bzkind)_natol$(natol)_nrtol$(nrtol)_nalg$(nalg)_prec$(prec)_gauge$(gauge)"
+function interpolateconductivitykw(; io=stdout, verb=true, cachepath=pwd(),
+    nworkers=1, batchthreads=Threads.nthreads(), kws...)
+
+    (; t, t′, Δ, ndim, Ωlims, kalg, falg, σatol, σrtol, tolratio, vcomp, bzkind, prec, gauge, coord) = merge(default, NamedTuple(kws))
+
+    h, bz = t2gmodel(; kws..., gauge=Wannier())
+    η = fermi_liquid_scattering(; kws...)
+    β = fermi_liquid_beta(; kws...)
+    μ = findchempot(; io, verb, cachepath, kws...)
+    shift!(h, μ)
+
+    id = string((; t, t′, Δ, ndim, η, β, μ, Ωlims, kalg, falg, σatol, σrtol, tolratio, vcomp, bzkind, prec, gauge, coord))
+
+    return jldopen(joinpath(cachepath, "cache-conductivity-kw.jld2"), "a+") do fn
         if !haskey(fn, id)
-            μ = findchempot(; io=io, verb=verb, t=t, t′=t′, Δ=Δ, T=T, T₀=T₀, Z=Z, μlims=μlims, ν=ν, nsp=nsp, alg=nalg, kalg=kalg, falg=falg, atol=natol, rtol=nrtol, bzkind=bzkind, tolratio=tolratio, prec=prec, gauge=gauge)
             verb && @info "Interpolating conductivity to add to cache" id
-            ti = time()
-            ni = 0
-            function status(n, lb, ub)
-                ni += n
-                verb && @printf io "\t %.3e s elapsed, sampling %5i points in (%.3e, %.3e)\n" time()-ti n ustrip(lb) ustrip(ub)
+
+            hv = GradientVelocityInterp(h, bz.A; coord, vcomp, gauge)
+            Σ = EtaSelfEnergy(η)
+            abstol = σatol/tolratio # tighter tolerance for integration than interpolation
+            reltol = σrtol/tolratio # tighter tolerance for integration than interpolation
+            w = AutoBZCore.workspace_allocate(hv, AutoBZCore.period(hv), Tuple(nworkers isa Int ? fill(nworkers, ndims(h)) : nworkers))
+            integrand = OpticalConductivityIntegrand(AutoBZ.lb(Σ), AutoBZ.ub(Σ), falg, w; Σ, β, abstol=abstol/det(bz.B)/nsyms(bz), reltol)
+            solver = IntegralSolver(integrand, bz, kalg; abstol, reltol)
+
+            cnt::Int = 0
+            f = BatchFunction() do Ω
+                cnt += length(Ω)
+                dat = @timed batchsolve(solver, paramzip(; Ω), SMatrix{ndim,ndim,typeof(complex(prec(σatol))),ndim^2}; nthreads=batchthreads)
+                verb && @printf io "\t %5i points sampled in %.3e s\n" length(Ω) dat.time
+                dat.value
             end
-            h = t2gmodel(t=prec(t), t′=prec(t′), Δ=prec(Δ), gauge=Wannier())
-            shift!(h, μ)
-            bz = load_bz(bzkind, one(SMatrix{3,3,prec,9}) * u"Å")
-            hv = GradientVelocityInterp(h, bz.A; coord=Cartesian(), vcomp=vcomp, gauge=gauge)
-            η = fermi_liquid_scattering(T=T, Z=Z, T₀=T₀, prec=prec)
-            Σ = ConstScalarSelfEnergy(-im*η)
-            β = prec(1/uconvert(unit(t), u"k_au"*T[1]))
-            abstol = atol/tolratio # tighter tolerance for integration than interpolation
-            reltol = rtol/tolratio # tighter tolerance for integration than interpolation
-            integrand = OpticalConductivityIntegrand(falg, hv, Σ, β, abstol=abstol/det(bz.B)/nsyms(bz), reltol=reltol)
-            solver = IntegralSolver(integrand, bz, kalg, abstol=abstol, reltol=reltol)
-            f = BatchFunction() do x
-                status(length(x), extrema(x)...)
-                batchsolve(solver, x, SMatrix{3,3,typeof(complex(prec(atol))),9}, nthreads=Threads.nthreads())
-            end
-            fn[id] = @timed hchebinterp(f, map(prec, Ωlims)..., atol=atol, rtol=rtol)
-            verb && @printf io "Done interpolating after %.3e s, %5i sample points\n" time()-ti ni
+
+            fn[id] = stats = @timed hchebinterp(f, map(prec, Ωlims)..., atol=σatol, rtol=σrtol)
+            verb && @printf io "Done interpolating after %.3e s, %5i sample points\n" stats.time cnt
         end
         return fn[id].value
     end
 
 end
 
-# todo: opposite order of integration
 
-function interpolateconductivitywk(;
-    vcomp = Whole(),
-    io = stdout,
-    verb = true,
-    t = default.t,
-    t′ = default.t′,
-    Δ = default.Δ,
-    nalg = default.nalg,
-    natol = default.natol,
-    nrtol = default.nrtol,
-    μlims = default.μlims,
-    T = default.T,
-    T₀ = default.T₀,
-    Z = default.Z,
-    Ωlims = default.Ωlims,
-    atol = default.σatol,
-    rtol = default.σrtol,
-    ν = default.ν,
-    nsp = default.nsp,
-    falg = default.falg,
-    kalg = default.kalg,
-    tolratio = default.tolratio,
-    bzkind = default.bzkind,
-    prec = default.prec,
-    gauge = default.gauge,
-)
+function interpolateconductivitywk(; io=stdout, verb=true, cachepath=pwd(),
+    nworkers=1, batchthreads=Threads.nthreads(), kws...)
 
-    return jldopen(joinpath(pwd(), "conductivitywkcache.jld2"), "a+") do fn
-        id = "t$(t)_t′$(t′)_Δ($Δ)_T($T)_T₀$(T₀)_Z$(Z)_ν$(ν)_nsp$(nsp)_μlims$(μlims)_kalg$(kalg)_falg$(falg)_atol$(atol)_rtol($rtol)_tolratio$(tolratio)_Ωlims$(Ωlims)_vcomp$(vcomp)_bzkind$(bzkind)_natol$(natol)_nrtol$(nrtol)_nalg$(nalg)_prec$(prec)_gauge$(gauge)"
+    (; t, t′, Δ, ndim, kalg, falg, Ωlims, σatol, σrtol, tolratio, vcomp, bzkind, prec, gauge, coord) = merge(default, NamedTuple(kws))
+
+    h, bz = t2gmodel(; kws..., gauge=Wannier())
+    η = fermi_liquid_scattering(; kws...)
+    β = fermi_liquid_beta(; kws...)
+    μ = findchempot(; io, verb, cachepath, kws...)
+    shift!(h, μ)
+
+    id = string((; t, t′, Δ, ndim, η, β, Ωlims, kalg, falg, σatol, σrtol, tolratio, vcomp, bzkind, prec, gauge, coord))
+
+    return jldopen(joinpath(cachepath, "cache-conductivity-wk.jld2"), "a+") do fn
         if !haskey(fn, id)
-            μ = findchempot(; io=io, verb=verb, t=t, t′=t′, Δ=Δ, T=T, T₀=T₀, Z=Z, μlims=μlims, ν=ν, nsp=nsp, alg=nalg, kalg=kalg, falg=falg, atol=natol, rtol=nrtol, bzkind=bzkind, tolratio=tolratio, prec=prec, gauge=gauge)
             verb && @info "Interpolating conductivity to add to cache" id
-            ti = time()
-            ni = 0
-            function status(n)
-                ni += n
-                verb && @printf io "\t %.3e s elapsed, sampling %5i points\n" time()-ti n
+
+            hv = GradientVelocityInterp(h, bz.A; coord, vcomp, gauge)
+            Σ = EtaSelfEnergy(η)
+            abstol = σatol/tolratio # tighter tolerance for integration than interpolation
+            reltol = σrtol/tolratio
+            a, b = AutoBZ.fermi_window_limits(maximum(Ωlims), β)
+            len = b-a
+            w = AutoBZCore.workspace_allocate(hv, AutoBZCore.period(hv), Tuple(nworkers isa Int ? fill(nworkers, ndims(h)) : nworkers))
+            integrand = OpticalConductivityIntegrand(bz, kalg, w; Σ, β, abstol=abstol/len, reltol)
+            solver = IntegralSolver(integrand, AutoBZ.lb(Σ), AutoBZ.ub(Σ), falg; abstol, reltol)
+
+            cnt::Int = 0
+            f = BatchFunction() do Ω
+                cnt += length(Ω)
+                dat = @timed batchsolve(solver, paramzip(; Ω), SMatrix{ndim,ndim,typeof(complex(prec(σatol))),ndim^2}; nthreads=batchthreads)
+                verb && @printf io "\t %5i points sampled in %.3e s\n" length(Ω) dat.time
+                dat.value
             end
-            h = t2gmodel(t=prec(t), t′=prec(t′), Δ=prec(Δ), gauge=Wannier())
-            shift!(h, μ)
-            bz = load_bz(CubicSymIBZ(), one(SMatrix{3,3,prec,9}) * u"Å")
-            hv = GradientVelocityInterp(h, bz.A; coord=Cartesian(), vcomp=vcomp, gauge=gauge)
-            η = fermi_liquid_scattering(T=T, Z=Z, T₀=T₀, prec=prec)
-            Σ = ConstScalarSelfEnergy(-im*η)
-            β = prec(1/uconvert(unit(t), u"k_au"*T[1]))
-            abstol = atol/tolratio # tighter tolerance for integration than interpolation
-            reltol = rtol/tolratio
-            integrand = OpticalConductivityIntegrand(bz, kalg, hv, Σ, β, abstol=abstol/det(bz.B)/nsyms(bz), reltol=reltol)
-            solver = IntegralSolver(integrand, AutoBZ.lb(Σ), AutoBZ.ub(Σ), falg, abstol=abstol, reltol=reltol)
-            f = BatchFunction() do x
-                status(length(x))
-                batchsolve(solver, x, nthreads=Threads.nthreads())
-            end
-            fn[id] = @timed hchebinterp(f, map(prec, Ωlims)..., atol=atol, rtol=rtol)
-            verb && @printf io "Done interpolating after %.3e s, %5i sample points\n" time()-ti ni
+
+            fn[id] = stats = @timed hchebinterp(f, map(prec, Ωlims)...; atol=σatol, rtol=σrtol)
+            verb && @printf io "Done interpolating after %.3e s, %5i sample points\n" stats.time cnt
         end
         return fn[id].value
     end
@@ -129,64 +99,42 @@ function interpolateconductivitywk(;
 end
 
 # just do the bz integral
-function interpolateconductivityk(;
-    ωlims,
-    vcomp = Inter(),
-    Ω = default.Ωinter,
-    μoffset = zero(Ω),
-    io = stdout,
-    verb = true,
-    t = default.t,
-    t′ = default.t′,
-    Δ = default.Δ,
-    nalg = default.nalg,
-    natol = default.natol,
-    nrtol = default.nrtol,
-    μlims = default.μlims,
-    T = default.T,
-    T₀ = default.T₀,
-    Z = default.Z,
-    atol = default.σatol,
-    rtol = default.σrtol,
-    ν = default.ν,
-    nsp = default.nsp,
-    falg = default.falg,
-    kalg = default.kalg,
-    tolratio = default.tolratio,
-    bzkind = default.bzkind,
-    prec = default.prec,
-    gauge = default.gauge,
-)
+function interpolateconductivityk(; ωlims, Ω, μoffset=zero(Ω),
+    io=stdout, verb=true, cachepath=pwd(), nworkers=1, kws...)
 
-    return jldopen(joinpath(pwd(), "conductivitykcache.jld2"), "a+") do fn
-        id = "t$(t)_t′$(t′)_Δ($Δ)_Ω$(Ω)_T($T)_T₀$(T₀)_Z$(Z)_ν$(ν)_nsp$(nsp)_μlims$(μlims)_kalg$(kalg)_falg$(falg)_atol$(atol)_rtol($rtol)_tolratio$(tolratio)_ωlims$(ωlims)_vcomp$(vcomp)_bzkind$(bzkind)_natol$(natol)_nrtol$(nrtol)_nalg$(nalg)_μoffset$(μoffset)_prec$(prec)_gauge$(gauge)"
+    (; t, t′, Δ, ndim, kalg, falg, σatol, σrtol, tolratio, vcomp, bzkind, prec, gauge, coord) = merge(default, NamedTuple(kws))
+
+    h, bz = t2gmodel(; kws..., gauge=Wannier())
+    η = fermi_liquid_scattering(; kws...)
+    β = fermi_liquid_beta(; kws...)
+    μ = findchempot(; io, verb, cachepath, kws...)
+    shift!(h, μ)
+
+    id = string((; t, t′, Δ, ndim, η, β, ωlims, Ω, μ, μoffset, kalg, falg, σatol, σrtol, tolratio, vcomp, bzkind, prec, gauge, coord))
+
+    return jldopen(joinpath(cachepath, "cache-conductivity-k.jld2"), "a+") do fn
         if !haskey(fn, id)
-            μ = findchempot(; io=io, verb=verb, t=t, t′=t′, Δ=Δ, T=T, T₀=T₀, Z=Z, μlims=μlims, ν=ν, nsp=nsp, alg=nalg, kalg=kalg, falg=falg, atol=natol, rtol=nrtol, bzkind=bzkind, tolratio=tolratio, prec=prec, gauge=gauge)
             verb && @info "Interpolating conductivity frequency integrand to add to cache" id
-            ti = time()
-            ni = 0
-            function status(n)
-                ni += n
-                verb && @printf io "\t %.3e s elapsed, sampling %5i points\n" time()-ti n
-            end
-            h = t2gmodel(t=prec(t), t′=prec(t′), Δ=prec(Δ), gauge=Wannier())
-            shift!(h, μ)
-            bz = load_bz(CubicSymIBZ(), one(SMatrix{3,3,prec,9}) * u"Å")
-            hv = GradientVelocityInterp(h, bz.A; coord=Cartesian(), vcomp=vcomp, gauge=gauge)
-            w = AutoBZCore.workspace_allocate(hv, AutoBZCore.period(hv), (1, 1, Threads.nthreads()))
-            η = fermi_liquid_scattering(T=T, Z=Z, T₀=T₀, prec=prec)
-            Σ = ConstScalarSelfEnergy(-im*η)
-            β = prec(1/uconvert(unit(t), u"k_au"*T[1]))
-            atol = atol / (Ω + 2/β) # compute absolute tolerance for frequency integrand
+
+            hv = GradientVelocityInterp(h, bz.A; coord, vcomp, gauge)
+            Σ = EtaSelfEnergy(η)
+            a, b = AutoBZ.fermi_window_limits(Ω, β)
+            atol = σatol / (b-a) # compute absolute tolerance for frequency integrand
             abstol = atol/tolratio # tighter tolerance for integration than interpolation
-            reltol = rtol/tolratio
-            integrand = OpticalConductivityIntegrand(bz, kalg, w, Σ, β, prec(Ω),prec(μoffset), abstol=abstol/det(bz.B)/nsyms(bz), reltol=reltol)
-            f = BatchFunction() do x
-                status(length(x))
-                integrand.(x, Ref(AutoBZCore.NullParameters()))
+            reltol = σrtol/tolratio
+            w = AutoBZCore.workspace_allocate(hv, AutoBZCore.period(hv), Tuple(nworkers isa Int ? fill(nworkers, ndims(h)) : nworkers))
+            integrand = OpticalConductivityIntegrand(bz, kalg, w; Σ, β, Ω=prec(Ω), μ=prec(μoffset), abstol, reltol)
+
+            cnt::Int = 0
+            f = BatchFunction() do ω
+                cnt += length(ω)
+                dat = @timed integrand.(ω, Ref(AutoBZ.CanonicalParameters()))
+                verb && @printf io "\t %5i points sampled in %.3e s\n" length(ω) dat.time
+                dat.value
             end
-            fn[id] = @timed hchebinterp(f, map(prec, ωlims)..., atol=atol, rtol=rtol)
-            verb && @printf io "Done interpolating after %.3e s, %5i sample points\n" time()-ti ni
+
+            fn[id] = stats = @timed hchebinterp(f, map(prec, ωlims)...; atol, rtol=σrtol)
+            verb && @printf io "Done interpolating after %.3e s, %5i sample points\n" stats.time cnt
         end
         return fn[id].value
     end
@@ -194,62 +142,41 @@ function interpolateconductivityk(;
 end
 
 # just do the frequency integral
-function interpolateconductivityw(;
-    vcomp = Inter(),
-    Ω = default.Ωinter,
-    μoffset = zero(Ω),
-    io = stdout,
-    verb = true,
-    t = default.t,
-    t′ = default.t′,
-    Δ = default.Δ,
-    nalg = default.nalg,
-    natol = default.natol,
-    nrtol = default.nrtol,
-    μlims = default.μlims,
-    T = default.T,
-    T₀ = default.T₀,
-    Z = default.Z,
-    atol = default.σatol,
-    rtol = default.σrtol,
-    ν = default.ν,
-    nsp = default.nsp,
-    falg = default.falg,
-    kalg = default.kalg,
-    tolratio = default.tolratio,
-    bzkind = default.bzkind,
-    prec = default.prec,
-    gauge = default.gauge,
-)
+function interpolateconductivityw(; Ω, μoffset=zero(Ω),
+    io=stdout, verb=true, cachepath=pwd(), nworkers=1, kws...)
 
-    return jldopen(joinpath(pwd(), "conductivitywcache.jld2"), "a+") do fn
-        id = "t$(t)_t′$(t′)_Δ($Δ)_Ω$(Ω)_T($T)_T₀$(T₀)_Z$(Z)_ν$(ν)_nsp$(nsp)_μlims$(μlims)_kalg$(kalg)_falg$(falg)_atol$(atol)_rtol($rtol)_tolratio$(tolratio)_vcomp$(vcomp)_bzkind$(bzkind)_natol$(natol)_nrtol$(nrtol)_nalg$(nalg)_prec$(prec)_gauge$(gauge)"
+    (; t, t′, Δ, ndim, kalg, falg, σatol, σrtol, tolratio, vcomp, bzkind, prec, gauge, coord) = merge(default, NamedTuple(kws))
+
+    h, bz = t2gmodel(; kws..., gauge=Wannier())
+    η = fermi_liquid_scattering(; kws...)
+    β = fermi_liquid_beta(; kws...)
+    μ = findchempot(; io, verb, cachepath, kws...)
+    shift!(h, μ)
+
+    id = string((; t, t′, Δ, ndim, η, β, μ, Ω, μoffset, kalg, falg, σatol, σrtol, tolratio, vcomp, bzkind, prec, gauge, coord))
+
+    return jldopen(joinpath(cachepath, "cache-conductivity-w.jld2"), "a+") do fn
         if !haskey(fn, id)
-            μ = findchempot(; io=io, verb=verb, t=t, t′=t′, Δ=Δ, T=T, T₀=T₀, Z=Z, μlims=μlims, ν=ν, nsp=nsp, alg=nalg, kalg=kalg, falg=falg, atol=natol, rtol=nrtol, bzkind=bzkind, tolratio=tolratio, prec=prec, gauge=gauge)
             verb && @info "Interpolating conductivity k integrand to add to cache" id
-            ti = time()
-            ni = 0
-            function status(n)
-                ni += n
-                verb && @printf io "\t %.3e s elapsed, sampling %5i points\n" time()-ti n
+
+            hv = GradientVelocityInterp(h, bz.A; coord, vcomp, gauge)
+            Σ = EtaSelfEnergy(η)
+            atol = σatol/det(bz.B)  # corresponding tolerance of k integrand
+            abstol = atol/tolratio/nsyms(bz) # tighter tolerance for integration than interpolation
+            reltol = σrtol/tolratio
+            w = AutoBZCore.workspace_allocate(hv, AutoBZCore.period(hv), Tuple(nworkers isa Int ? fill(nworkers, ndims(h)) : nworkers))
+            integrand = OpticalConductivityIntegrand(AutoBZ.lb(Σ), AutoBZ.ub(Σ), falg, w; Σ, β, Ω=prec(Ω), μ=prec(μoffset), abstol, reltol)
+
+            cnt::Int = 0
+            f = BatchFunction() do k
+                cnt += length(k)
+                dat = @timed integrand.(k, Ref(AutoBZ.CanonicalParameters()))
+                verb && @printf io "\t %5i points sampled in %.3e s\n" length(k) dat.time
+                dat.value
             end
-            h = t2gmodel(t=prec(t), t′=prec(t′), Δ=prec(Δ), gauge=Wannier())
-            shift!(h, μ)
-            bz = load_bz(CubicSymIBZ(), one(SMatrix{3,3,prec,9}) * u"Å")
-            hv = GradientVelocityInterp(h, bz.A; coord=Cartesian(), vcomp=vcomp, gauge=gauge)
-            η = fermi_liquid_scattering(T=T, Z=Z, T₀=T₀, prec=prec)
-            Σ = ConstScalarSelfEnergy(-im*η)
-            β = prec(1/uconvert(unit(t), u"k_au"*T[1]))
-            atol = atol/det(bz.B)
-            abstol = atol/tolratio # tighter tolerance for integration than interpolation
-            reltol = rtol/tolratio
-            integrand = OpticalConductivityIntegrand(falg, hv, Σ, β, prec(Ω),prec(μoffset), abstol=abstol/nsyms(bz), reltol=reltol)
-            f = BatchFunction() do x
-                status(length(x))
-                integrand.(x, Ref(AutoBZCore.NullParameters())) 
-            end
-            fn[id] = @timed hchebinterp(f, map(zero, period(hv)), period(hv), atol=atol, rtol=rtol)
-            verb && @printf io "Done interpolating after %.3e s, %5i sample points\n" time()-ti ni
+
+            fn[id] = stats = @timed hchebinterp(f, map(zero, period(hv)), period(hv); atol, rtol=σrtol)
+            verb && @printf io "Done interpolating after %.3e s, %5i sample points\n" stats.time cnt
         end
         return fn[id].value
     end

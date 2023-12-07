@@ -5,7 +5,10 @@ using LinearAlgebra
 using AutoBZ
 
 
-function ogmodel(; t=-0.25, t′=0.05, Δ=0.0, d::Int=3)
+function ogmodel(; kws...)
+
+    (; t, t′, Δ, ndim) = merge(default, NamedTuple(kws))
+    d = ndim
     SM = SMatrix{d,d,typeof(t),d^2}
     A = zeros(SM, ntuple(_->3,d)...)
     H = OffsetArray(A, ntuple(_->-1:1,3)...)
@@ -45,10 +48,13 @@ function ogmodel(; t=-0.25, t′=0.05, Δ=0.0, d::Int=3)
     return FourierSeries(H, period=real(2one(t)*pi))
 end
 
-function t2gmodel(; t=-0.25u"eV", t′=0.05u"eV", Δ=0.0u"eV", ndim=nothing, gauge=Hamiltonian())
-    d = isnothing(ndim) ? 3 : ndim
-    SM = SMatrix{d,d,typeof(t),d^2}
-    MM = MMatrix{d,d,typeof(t),d^2}
+function t2gmodel(; kws...)
+
+    (; t, t′, Δ, ndim, gauge, prec, bzkind) = merge(default, NamedTuple(kws))
+    d = ndim
+    SM = SHermitianCompact{d,typeof(prec(t)),StaticArrays.triangularnumber(d)}
+    # SM = SMatrix{d,d,typeof(prec(t)),d^2}
+    MM = MMatrix{d,d,typeof(prec(t)),d^2}
     A = MM[zero(MM) for _ in Iterators.product(ntuple(_->1:3,Val(d))...)]
     H = OffsetArray(A, ntuple(_->-1:1,Val(d))...)
 
@@ -81,15 +87,19 @@ function t2gmodel(; t=-0.25u"eV", t′=0.05u"eV", Δ=0.0u"eV", ndim=nothing, gau
     # crystal field splitting on 1st orbital
     H[CartesianIndex(ntuple(zero,Val(d)))][1,1] += Δ
 
-    return HamiltonianInterp(AutoBZ.Freq2RadSeries(FourierSeries(similar(H, SM) .= H, period=real(2one(t)*pi))), gauge=gauge)
+    # construct corresponding Brillouin zone
+    !iszero(Δ) && bzkind isa CubicSymIBZ && error("nonzero CFS breaks cubic symmetry in BZ")
+    bz = load_bz(bzkind, one(SMatrix{d,d,prec,d^2}) * u"Å")
+
+    return HamiltonianInterp(AutoBZ.Freq2RadSeries(FourierSeries(similar(H, SM) .= H; period=prec(real(2one(t)*pi)))); gauge), bz
 end
 
-function fermi_liquid_scattering(;
-    t = default.t,
-    T = default.T,
-    T₀ = default.T₀,
-    Z = default.Z,
-    prec = default.prec,
-)
+function fermi_liquid_scattering(; kws...)
+    (; t, T, T₀, Z, prec) = merge(default, NamedTuple(kws))
     return map(T -> prec(uconvert(unit(t), T^2*u"k_au"*pi/(Z*T₀))), T)
+end
+
+function fermi_liquid_beta(; kws...)
+    (; t, T, prec) = merge(default, NamedTuple(kws))
+    return prec(1/uconvert(unit(t), u"k_au"*T))
 end

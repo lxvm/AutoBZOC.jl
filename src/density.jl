@@ -3,52 +3,48 @@ using NonlinearSolve
 using JLD2
 using Printf
 
-function interpolatedensity(;
-    io = stdout,
-    verb = true,
-    t = default.t,
-    t′ = default.t′,
-    Δ = default.Δ,
-    atol = default.natol,
-    rtol = default.nrtol,
-    μlims = default.μlims,
-    T = default.T,
-    T₀ = default.T₀,
-    Z = default.Z,
-    bzkind = default.bzkind,
-    falg = default.falg,
-    kalg = default.kalg,
-    tolratio = default.tolratio,
-    prec = default.prec,
-    gauge = default.gauge,
-)
 
-    return jldopen(joinpath(pwd(), "densitycache.jld2"), "a+") do fn
-        id = "t$(t)_t′$(t′)_Δ($Δ)_T($T)_T₀$(T₀)_Z$(Z)_μlims$(μlims)_kalg$(kalg)_falg$(falg)_atol$(atol)_rtol($rtol)_tolratio$(tolratio)_bzkind$(bzkind)_prec$(prec)_gauge$(gauge)"
+function interpolatedensity(; kws...)
+    (; kalg) = merge(default, NamedTuple(kws))
+    if kalg isa PTR || kalg isa AutoPTR
+        return interpolatedensitywk(; kws...)
+    else
+        return interpolatedensitykw(; kws...)
+    end
+end
+
+function interpolatedensitykw(; io=stdout, verb=true, cachepath=pwd(),
+    nworkers=1, batchthreads=Threads.nthreads(), kws...)
+
+    (; t, t′, Δ, ndim, natol, nrtol, μlims, bzkind, falg, kalg, tolratio, prec, gauge) = merge(default, NamedTuple(kws))
+
+    h, bz = t2gmodel(; kws...)
+    η = fermi_liquid_scattering(; kws...)
+    β = fermi_liquid_beta(; kws...)
+
+    id = string((; t, t′, Δ, ndim, natol, nrtol, μlims, η, β, bzkind, falg, kalg, tolratio, prec, gauge))
+
+    return jldopen(joinpath(cachepath, "cache-density-kw.jld2"), "a+") do fn
         if !haskey(fn, id)
             verb && @info "Interpolating density to add to cache" id
-            ti = time()
-            ni = 0
-            function status(n)
-                ni += n
-                verb && @printf io "\t %.3e s elapsed, sampling %5i points\n" time()-ti n
+
+            Σ = EtaSelfEnergy(η)
+            abstol = natol*det(bz.B)/tolratio
+            reltol = nrtol/tolratio
+            w = AutoBZCore.workspace_allocate(h, AutoBZCore.period(h), Tuple(nworkers isa Int ? fill(nworkers, ndims(h)) : nworkers))
+            integrand = ElectronDensityIntegrand(AutoBZ.lb(Σ), AutoBZ.ub(Σ), falg, w; Σ, β, abstol=abstol/det(bz.B)/nsyms(bz), reltol)
+            solver = IntegralSolver(integrand, bz, kalg; abstol, reltol)
+
+            cnt::Int = 0
+            f = BatchFunction() do μ
+                cnt += length(μ)
+                dat = @timed batchsolve(solver, paramzip(; μ), typeof(float(det(bz.B))); nthreads=batchthreads)
+                verb && @printf io "\t %5i points sampled in %.3e s\n" length(μ) dat.time
+                upreferred.(dat.value/det(bz.B))
             end
-            h = t2gmodel(t=prec(t), t′=prec(t′), Δ=prec(Δ), gauge=gauge)
-            !iszero(Δ) && bzkind isa CubicSymIBZ && error("nonzero CFS breaks cubic symmetry in BZ")
-            bz = load_bz(bzkind, one(SMatrix{3,3,prec,9}) * u"Å")
-            η = fermi_liquid_scattering(T=T, Z=Z, T₀=T₀, prec=prec)
-            Σ = ConstScalarSelfEnergy(-im*η)
-            β = prec(1/uconvert(unit(t), u"k_au"*T[1]))
-            abstol = atol*det(bz.B)/tolratio
-            reltol = rtol/tolratio
-            integrand = ElectronDensityIntegrand(falg, h, Σ, β, abstol=abstol/det(bz.B)/nsyms(bz), reltol=reltol)
-            solver = IntegralSolver(integrand, bz, kalg, abstol=abstol, reltol=reltol)
-            f = BatchFunction() do x
-                status(length(x))
-                return upreferred.(batchsolve(solver, x, nthreads=Threads.nthreads())/det(bz.B))
-            end
-            fn[id] = @timed hchebinterp(f, map(prec, μlims)..., atol=atol, rtol=rtol)
-            verb && @printf io "Done interpolating after %.3e s, %5i sample points\n" time()-ti ni
+
+            fn[id] = stats = @timed hchebinterp(f, map(prec, μlims)...; atol=natol, rtol=nrtol)
+            verb && @printf io "Done interpolating after %.3e s, %5i sample points\n" stats.time cnt
         end
         return fn[id].value
     end
@@ -56,39 +52,65 @@ function interpolatedensity(;
 end
 
 
-function findchempot(;
-    io = stdout,
-    verb = true,
-    t = default.t,
-    t′ = default.t′,
-    Δ = default.Δ,
-    alg = default.nalg,
-    atol = default.natol,
-    rtol = default.nrtol,
-    μlims = default.μlims,
-    T = default.T,
-    T₀ = default.T₀,
-    Z = default.Z,
-    ν = default.ν,
-    nsp = default.nsp,
-    falg = default.falg,
-    kalg = default.kalg,
-    tolratio = default.tolratio,
-    bzkind = default.bzkind,
-    prec = default.prec,
-    gauge = default.gauge,
-)
-    n = interpolatedensity(; io=io, verb=verb, t=t, t′=t′, Δ=Δ, T=T, T₀=T₀, Z=Z, kalg=kalg, falg=falg, μlims=μlims, bzkind=bzkind, atol=atol, rtol=rtol, tolratio=tolratio, prec=prec, gauge=gauge)
-    verb && @info "Finding chemical potential"
-    ti = time()
-    ni = 0
-    u = prec(oneunit(eltype(μlims)))
-    uμlims = map(x -> prec(x)/u, μlims)
-    prob = IntervalNonlinearProblem(uμlims, prec(ν/nsp)) do x, ν
-        ni += 1
-        return n(u*x)-ν
+function interpolatedensitywk(; io=stdout, verb=true, cachepath=pwd(),
+    nworkers=1, batchthreads=Threads.nthreads(), kws...)
+
+    (; t, t′, Δ, ndim, natol, nrtol, μlims, bzkind, falg, kalg, tolratio, prec, gauge) = merge(default, NamedTuple(kws))
+
+    h, bz = t2gmodel(; kws...)
+    η = fermi_liquid_scattering(; kws...)
+    β = fermi_liquid_beta(; kws...)
+
+    id = string((; t, t′, Δ, ndim, natol, nrtol, μlims, η, β, bzkind, falg, kalg, tolratio, prec, gauge))
+
+    return jldopen(joinpath(cachepath, "cache-density-wk.jld2"), "a+") do fn
+        if !haskey(fn, id)
+            verb && @info "Interpolating density to add to cache" id
+
+            Σ = EtaSelfEnergy(η)
+            abstol = natol*det(bz.B)/tolratio
+            reltol = nrtol/tolratio
+            f = AutoBZ.parentseries(h)
+            bandwidth_bound = sqrt(sum(norm(c)^2 for c in f.c) - norm(f.c[-CartesianIndex(f.o)])^2)
+            w = AutoBZCore.workspace_allocate(h, AutoBZCore.period(h), Tuple(nworkers isa Int ? fill(nworkers, ndims(h)) : nworkers))
+            integrand = ElectronDensityIntegrand(bz, kalg, w; Σ, β, abstol=abstol/bandwidth_bound, reltol)
+            solver = IntegralSolver(integrand, AutoBZ.lb(Σ), AutoBZ.ub(Σ), falg; abstol, reltol)
+
+            cnt::Int = 0
+            f = BatchFunction() do μ
+                cnt += length(μ)
+                dat = @timed batchsolve(solver, paramzip(; μ), typeof(float(det(bz.B))); nthreads=batchthreads)
+                verb && @printf io "\t %5i points sampled in %.3e s\n" length(μ) dat.time
+                upreferred.(dat.value/det(bz.B))
+            end
+
+            fn[id] = stats = @timed hchebinterp(f, map(prec, μlims)...; atol=natol, rtol=nrtol)
+            verb && @printf io "Done interpolating after %.3e s, %5i sample points\n" stats.time cnt
+        end
+        return fn[id].value
     end
-    sol = solve(prob, alg, abstol=atol, reltol=rtol)
-    verb && @printf io "Done finding chemical potential after %.3e s, %5i sample points\n" time()-ti ni
-    return sol.u*u
+
+end
+
+
+function findchempot(; io=stdout, verb=true, kws...)
+
+    (; nalg, μlims, ν, nsp, natol, nrtol, prec) = merge(default, NamedTuple(kws))
+
+    n = interpolatedensity(; io, verb, kws...)
+
+    verb && @info "Finding chemical potential"
+
+    cnt::Int = 0
+    u = prec(oneunit(eltype(μlims)))
+    uμlims = map(x -> prec(x/u), μlims)
+    prob = IntervalNonlinearProblem(uμlims, prec(ν/nsp)) do μ, ν
+        cnt += 1
+        return n(u*μ)-ν
+    end
+    stats = @timed solve(prob, nalg, abstol=natol, reltol=nrtol)
+
+    verb && @printf io "Done finding chemical potential after %.3e s, %5i sample points\n" stats.time cnt
+
+    return stats.value.u*u
 end

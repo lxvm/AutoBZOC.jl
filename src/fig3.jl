@@ -1,47 +1,23 @@
-function fig3(;
-    io = stdout,
-    verb = true,
-    colormap = :thermal,
-    scalarize = default.scalarize,
-    scalarize_text = default.scalarize_text,
-    t = default.t,
-    t′ = default.t′,
-    Δ = default.Δ,
-    nalg = default.nalg,
-    natol = default.natol,
-    nrtol = default.nrtol,
-    μlims = default.μlims,
-    Tseries = default.Tseries,
-    T₀ = default.T₀,
-    Z = default.Z,
-    Ωlims = default.Ωlims,
-    Ωintra = default.Ωintra,
-    Ωinter = default.Ωinter,
-    atol = default.σatol,
-    rtol = default.σrtol,
-    ν = default.ν,
-    nsp = default.nsp,
-    falg = default.falg,
-    kalg = default.kalg,
-    bzkind = default.bzkind,
-    tolratio = default.tolratio,
-    prec = default.prec,
-    NΩ = default.NΩ,
-    gauge = default.gauge,
-)
+function fig3(; colormap=:thermal, ylims=(0,100), kws...)
+
+    (; scalarize, scalarize_text, Tseries, Ωlims, Ωintra, Ωinter, NΩ, σudisplay, σufactor, nsp, ndim) = merge(default, NamedTuple(kws))
+
     Ωs = range(Ωlims..., length=NΩ)
     fig = Figure(resolution=(800,600))
     ax = Axis(fig[1,1], title="Fermi liquid optical conductivity",
         xlabel="Ω ($(unit(eltype(Ωs))))", xticks=ustrip.(unique(append!(collect(Ωlims), [Ωinter, Ωintra]))),
-        ylabel="$(scalarize_text) ($(unit(atol)))", yscale=log10,
-        limits=(ustrip.(Ωlims), nothing),
+        ylabel="$(scalarize_text) ($(σudisplay))",
+        limits=(ustrip.(Ωlims), ylims),
     )
+
+    inset = inset_axis!(fig, ax; extent = (0.45, 0.75, 0.65, 0.95), xlabel="T ($(unit(eltype(Tseries))))", ylabel="σ(Ω=0) ($(σudisplay))", xscale=log10, yscale=log10)
+
     Tmax = maximum(Tseries)
     colors = cgrad(colormap)
-    for T in reverse(sort(Tseries))
-        cond = interpolateconductivitykw(vcomp=Whole(), t=t, t′=t′, Δ=Δ, T=T, T₀=T₀, Z=Z, kalg=kalg, falg=falg, natol=natol, nrtol=nrtol, nalg=nalg, bzkind=bzkind,
-                μlims=μlims, ν=ν, nsp=nsp, Ωlims=Ωlims, atol=atol, rtol=rtol, io=io, verb=verb, tolratio=tolratio, prec=prec, gauge=gauge)
-        lines!(ax, ustrip.(Ωs), ustrip.(scalarize.(cond.(Ωs))), label="T=$T", color=colors[T/Tmax])
+    for T in reverse(sort(collect(Tseries)))
+        cond = interpolateconductivity(; kws..., T)
+        lines!(ax, ustrip.(Ωs), ustrip.(uconvert.(σudisplay, scalarize.((nsp*σufactor/(2pi)^ndim) .* cond.(Ωs)))), label="T=$T", color=colors[T/Tmax])
+        scatter!(inset, ustrip(T), ustrip(uconvert(σudisplay, scalarize((nsp*σufactor/(2pi)^ndim) * cond(zero(Ωintra))))), color=:black)
     end
     axislegend(ax)
     return fig

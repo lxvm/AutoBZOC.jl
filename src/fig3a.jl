@@ -6,66 +6,28 @@ using Brillouin
 using ColorSchemes, Colors
 
 
-function fig3a(;
-    io = stdout,
-    verb = true,
-    scalarize = default.scalarize,
-    scalarize_text = default.scalarize_text,
-    t = default.t,
-    t′ = default.t′,
-    Δ = default.Δ,
-    nalg = default.nalg,
-    natol = default.natol,
-    nrtol = default.nrtol,
-    μlims = default.μlims,
-    Ωintra = default.Ωintra,
-    Ωinter = default.Ωinter,
-    T = default.T,
-    T₀ = default.T₀,
-    Z = default.Z,
-    Ωlims = default.Ωlims,
-    atol = default.σatol,
-    rtol = default.σrtol,
-    ν = default.ν,
-    nsp = default.nsp,
-    falg = default.falg,
-    kalg = default.kalg,
-    bzkind = default.bzkind,
-    cintra = default.cintra,
-    cinter = default.cinter,
-    tolratio = default.tolratio,
-    prec = default.prec,
-    Nk = default.Nk,
-    Nω = default.Nω,
-    NΩ = default.NΩ,
-    gauge = default.gauge,
-)
+function fig3a(; cintra=:orange, cinter=:green, alpha=1.0, ylims=(0, 50), kws...)
 
-    bz = load_bz(bzkind, one(SMatrix{3,3,prec,9}) * u"Å")
+    (; scalarize, scalarize_text, Nk, Nω, NΩ, σatol, σrtol, t, Ωintra, Ωinter, Ωlims, μlims, prec, falg, gauge, coord, σudisplay, σufactor, nsp, ndim) = merge(default, NamedTuple(kws))
+    h, bz = t2gmodel(; kws..., gauge=Wannier())
 
-    H = t2gmodel(t=prec(t), t′=prec(t′), Δ=prec(Δ), gauge=Wannier())
-    chempot = uconvert(unit(t), findchempot(; io=io, verb=verb, t=t, t′=t′, Δ=Δ, T=T, T₀=T₀, Z=Z, μlims=μlims, ν=ν, nsp=nsp, alg=nalg, kalg=kalg, falg=falg, atol=natol, rtol=nrtol, bzkind=bzkind, tolratio=tolratio, prec=prec))
-    shift!(H, chempot)
-    hvintra = GradientVelocityInterp(H, bz.A; coord=Cartesian(), vcomp=Intra(), gauge=gauge)
-    hvinter = GradientVelocityInterp(H, bz.A; coord=Cartesian(), vcomp=Inter(), gauge=gauge)
+    μ = findchempot(; kws...)
+    shift!(h, μ)
+    hvintra = GradientVelocityInterp(h, bz.A; coord, vcomp=Intra(), gauge)
+    hvinter = GradientVelocityInterp(h, bz.A; coord, vcomp=Inter(), gauge)
 
-    Ωintra = prec(uconvert(unit(t), Ωintra))
-    Ωinter = prec(uconvert(unit(t), Ωinter))
-    η = fermi_liquid_scattering(T=T, Z=Z, T₀=T₀, prec=prec)
-    Σ = ConstScalarSelfEnergy(-im*η)
-    β = prec(1/uconvert(unit(t), u"k_au"*T[1]))
+    η = fermi_liquid_scattering(; kws...)
+    β = fermi_liquid_beta(; kws...)
+    Σ = EtaSelfEnergy(η)
     μintra = -Ωintra/2
     μinter = -Ωinter/2
-    ocintra = FourierIntegrand((x, f) -> ustrip(scalarize(AutoBZ.transport_fermi_integrand_inside(f*oneunit(t), Σ, nothing, 0, β, Ωintra, μintra, x))), hvintra)
-    ocinter = FourierIntegrand((x, f) -> ustrip(scalarize(AutoBZ.transport_fermi_integrand_inside(f*oneunit(t), Σ, nothing, 0, β, Ωinter, μinter, x))), hvinter)
+    ocintra = FourierIntegrand((x, f) -> ustrip(scalarize(AutoBZ.transport_fermi_integrand_inside(f*unit(t); Σ, n=0, β, Ω=prec(Ωintra), μ=prec(μintra), hv_k=x))), hvintra)
+    ocinter = FourierIntegrand((x, f) -> ustrip(scalarize(AutoBZ.transport_fermi_integrand_inside(f*unit(t); Σ, n=0, β, Ω=prec(Ωinter), μ=prec(μinter), hv_k=x))), hvinter)
 
-    oc_kintegrand_intra = OpticalConductivityIntegrand(AutoBZ.fermi_window_limits(Ωintra, β)..., falg, hvintra, Σ, β, Ωintra, μintra, reltol=rtol)
-    oc_kintegrand_inter = OpticalConductivityIntegrand(AutoBZ.fermi_window_limits(Ωinter, β)..., falg, hvinter, Σ, β, Ωinter, μinter, reltol=rtol)
+    oc_kintegrand_intra = OpticalConductivityIntegrand(AutoBZ.lb(Σ), AutoBZ.ub(Σ), falg, hvintra; Σ, β, Ω=prec(Ωintra), μ=prec(μintra), reltol=σrtol)
+    oc_kintegrand_inter = OpticalConductivityIntegrand(AutoBZ.lb(Σ), AutoBZ.ub(Σ), falg, hvinter; Σ, β, Ω=prec(Ωinter), μ=prec(μinter), reltol=σrtol)
 
-    # oc_fintegrand_intra = OpticalConductivityIntegrand(bz, kalg, hvintra, Σ, β, Ωintra, μintra)
-    # oc_fintegrand_inter = OpticalConductivityIntegrand(bz, kalg, hvinter, Σ, β, Ωinter, μinter)
-
-    pts = Dict{Symbol,SVector{3,prec}}(
+    pts = Dict{Symbol,SVector{3,Float64}}(
         :R => [0.5, 0.5, 0.5],
         :M => [0.5, 0.5, 0.0],
         :Γ => [0.0, 0.0, 0.0],
@@ -79,43 +41,38 @@ function fig3a(;
     kp = KPath(pts, paths, basis, setting)
     kpi = interpolate(kp, Nk)
 
-    alpharamp = range(0, 1, length=256) # log.(10, 9*range(0, 1, length=256) .+ 1)    
+    alpharamp = range(0, 1, length=256) # log.(10, 9*range(0, 1, length=256) .+ 1)
     cintragrad = Colors.alphacolor.(Makie.to_colormap(cgrad([cintra, cintra], 100)), alpharamp)
     cintergrad = Colors.alphacolor.(Makie.to_colormap(cgrad([cinter, cinter], 100)), alpharamp)
 
     fig = Figure(resolution=(800,1600))
 
     condlayout = GridLayout()
-    Ωs = range(Ωlims..., length=NΩ)
+    Ωs = range(prec.(Ωlims)..., length=NΩ)
     ax = Axis(fig, title="Orbital structure of optical conductivity",
         xlabel="Ω ($(unit(eltype(Ωs))))", xticks=ustrip.(unique(append!(collect(Ωlims), [Ωinter, Ωintra]))),
-        ylabel="$(scalarize_text) ($(unit(atol)))", yscale=log10,
-        limits=(ustrip.(Ωlims), nothing))
+        ylabel="$(scalarize_text) ($(σudisplay))",
+        limits=(ustrip.(Ωlims), ylims))
     condlayout[1,1] = ax
 
-    cond = interpolateconductivitykw(vcomp=Whole(), t=t, t′=t′, Δ=Δ, T=T, T₀=T₀, Z=Z, kalg=kalg, falg=falg, natol=natol, nrtol=nrtol, nalg=nalg, bzkind=bzkind,
-                μlims=μlims, ν=ν, nsp=nsp, Ωlims=Ωlims, atol=atol, rtol=rtol, io=io, verb=verb, tolratio=tolratio, prec=prec, gauge=gauge)
+    cond = interpolateconductivity(; kws..., vcomp=Whole())
+    condintra = interpolateconductivity(; kws..., vcomp=Intra())
+    condinter = interpolateconductivity(; kws..., vcomp=Inter())
 
-    condintra = interpolateconductivitykw(vcomp=Intra(), t=t, t′=t′, Δ=Δ, T=T, T₀=T₀, Z=Z, kalg=kalg, falg=falg, natol=natol, nrtol=nrtol, nalg=nalg, bzkind=bzkind,
-                μlims=μlims, ν=ν, nsp=nsp, Ωlims=Ωlims, atol=atol, rtol=rtol, io=io, verb=verb, tolratio=tolratio, prec=prec, gauge=gauge)
-
-    condinter = interpolateconductivitykw(vcomp=Inter(), t=t, t′=t′, Δ=Δ, T=T, T₀=T₀, Z=Z, kalg=kalg, falg=falg, natol=natol, nrtol=nrtol, nalg=nalg, bzkind=bzkind,
-                μlims=μlims, ν=ν, nsp=nsp, Ωlims=Ωlims, atol=atol, rtol=rtol, io=io, verb=verb, tolratio=tolratio, prec=prec, gauge=gauge)
-
-    lines!(ax, ustrip.(Ωs), ustrip.(scalarize.(cond.(Ωs))), color=:black, label="whole")
-    lines!(ax, ustrip.(Ωs), ustrip.(scalarize.(condintra.(Ωs))), color=cintra, label="inter-band")
-    lines!(ax, ustrip.(Ωs), ustrip.(scalarize.(condinter.(Ωs))), color=cinter, label="inter-band")
+    lines!(ax, ustrip.(Ωs), ustrip.(uconvert.(σudisplay, (nsp*σufactor/(2pi)^ndim) .* scalarize.(cond.(Ωs)))), color=:black, label="whole")
+    lines!(ax, ustrip.(Ωs), ustrip.(uconvert.(σudisplay, (nsp*σufactor/(2pi)^ndim) .* scalarize.(condintra.(Ωs)))), color=cintra, label="inter-band")
+    lines!(ax, ustrip.(Ωs), ustrip.(uconvert.(σudisplay, (nsp*σufactor/(2pi)^ndim) .* scalarize.(condinter.(Ωs)))), color=cinter, label="inter-band")
     axislegend(ax)
 
     kps = KPathSegment(kpi.basis, kpi.kpaths[1], kpi.labels[1], kpi.setting)
-    kloc = cumdists([bz.B*u"Å" * k for k in kps.kpath])
-    ωlims = μlims ./ 2 .- chempot
-    freqs = range(ustrip.(ωlims)..., length=Nω)
+    kloc = cumdists([ustrip.(bz.B) * k for k in kps.kpath])
+    ωlims = μlims ./ 2 .- μ
+    freqs = range(prec.(ustrip.(ωlims))..., length=Nω)
 
     structurelayout = GridLayout(nrow=4, ncol=2, parent=fig)
 
     axintra = Axis(fig,
-    xlabel="Spectral density of $(scalarize_text) ($(unit(atol/t/det(bz.B))))", ylabel="ω (eV)",
+    xlabel="Spectral density of $(scalarize_text)", ylabel="ω (eV)",
     xticks=(kloc[collect(keys(kps.label))], map(string, values(kps.label))),
     limits = (extrema(kloc), extrema(freqs))
     )
@@ -123,71 +80,69 @@ function fig3a(;
 
 
     axinter = Axis(fig,
-    xlabel="Spectral density of $(scalarize_text) ($(unit(atol/t/det(bz.B))))", ylabel="ω (eV)",
+    xlabel="Spectral density of $(scalarize_text)", ylabel="ω (eV)",
     xticks=(kloc[collect(keys(kps.label))], map(string, values(kps.label))),
     limits = (extrema(kloc), extrema(freqs))
     )
     structurelayout[4,1] = axinter
 
 
-    kpathinterpplot!(axintra, kps, freqs, ocintra, alpha=1.0, densitycolormap=cintragrad) #densitycolormap=Makie.Reverse(:RdBu))
-    kpathinterpplot!(axintra, kps, H)
+    kpathinterpplot!(axintra, kps, freqs, ocintra; alpha, densitycolormap=cintragrad)
+    kpathinterpplot!(axintra, kps, h)
 
-    kpathinterpplot!(axinter, kps, freqs, ocinter, alpha=0.5, densitycolormap=cintergrad) #densitycolormap=Makie.Reverse(:RdBu))
-    kpathinterpplot!(axinter, kps, H)
+    kpathinterpplot!(axinter, kps, freqs, ocinter; alpha, densitycolormap=cintergrad)
+    kpathinterpplot!(axinter, kps, h)
 
 
     insetintra = inset_axis!(fig, axintra; extent = (0.15, 0.45, 0.45, 0.75),
         limits=((1.0,2.5), (-0.05, 0.05)), xticklabelsvisible=false, xticksvisible=false, xgridvisible=false, ygridvisible=false)
 
-    kpathinterpplot!(insetintra, kps, freqs, ocintra, alpha=1.0, densitycolormap=cintragrad) #densitycolormap=Makie.Reverse(:RdBu))
-    kpathinterpplot!(insetintra, kps, H)
+    kpathinterpplot!(insetintra, kps, freqs, ocintra; alpha, densitycolormap=cintragrad) #densitycolormap=Makie.Reverse(:RdBu))
+    kpathinterpplot!(insetintra, kps, h)
 
     insetinter = inset_axis!(fig, axinter; extent = (0.15, 0.45, 0.45, 0.75),
         limits=((1.0,2.0), (-0.2, 0.05)), xticklabelsvisible=false, xticksvisible=false, xgridvisible=false, ygridvisible=false)
 
-    kpathinterpplot!(insetinter, kps, freqs, ocinter, alpha=1.0, densitycolormap=cintergrad) #densitycolormap=Makie.Reverse(:RdBu))
-    kpathinterpplot!(insetinter, kps, H)
+    kpathinterpplot!(insetinter, kps, freqs, ocinter; alpha, densitycolormap=cintergrad) #densitycolormap=Makie.Reverse(:RdBu))
+    kpathinterpplot!(insetinter, kps, h)
 
-    axkintra = Axis(fig, ylabel="∫ $(scalarize_text)(k,ω) dω", limits=(extrema(kloc), nothing), ygridvisible=false)
+    axkintra = Axis(fig, ylabel="∫ $(scalarize_text)(k,ω) dω", limits=(extrema(kloc), nothing), ygridvisible=false, yticks=[0.0])
     structurelayout[1,1] = axkintra
     linkxaxes!(axkintra, axintra)
     hidexdecorations!(axkintra, ticks = false, grid = false)
 
 
-    axkinter = Axis(fig, ylabel="∫ $(scalarize_text)(k,ω) dω", limits=(extrema(kloc), nothing), ygridvisible=false)
+    axkinter = Axis(fig, ylabel="∫ $(scalarize_text)(k,ω) dω", limits=(extrema(kloc), nothing), ygridvisible=false, yticks=[0.0])
     structurelayout[3,1] = axkinter
     linkxaxes!(axkinter, axinter)
     hidexdecorations!(axkinter, ticks = false, grid = false)
 
     # problem with nearly-degenerate eigenvectors is that
-    dat_k_intra = [oc_kintegrand_intra(k, AutoBZCore.NullParameters()) for k in kpi]
-    dat_k_inter = [oc_kintegrand_inter(k, AutoBZCore.NullParameters()) for k in kpi]
+    dat_k_intra = [oc_kintegrand_intra(map(prec, k), AutoBZ.CanonicalParameters()) for k in kpi]
+    dat_k_inter = [oc_kintegrand_inter(map(prec, k), AutoBZ.CanonicalParameters()) for k in kpi]
 
 
     lines!(axkintra, kloc, ustrip.(scalarize.(dat_k_intra)), color=cintra)
     lines!(axkinter, kloc, ustrip.(scalarize.(dat_k_inter)), color=cinter)
 
-    axfintra = Axis(fig, xlabel="∫ $(scalarize_text)(k,ω) dk", xgridvisible=false)# limits=(nothing, extrema(freqs)))
+    axfintra = Axis(fig, xlabel="∫ $(scalarize_text)(k,ω) dk", xgridvisible=false, xticks=[0.0])
     structurelayout[2,2] = axfintra
     linkyaxes!(axfintra, axintra)
     hideydecorations!(axfintra, ticks = false, grid = false)
 
-    axfinter = Axis(fig, xlabel="∫ $(scalarize_text)(k,ω) dk", xgridvisible=false)# limits=(nothing, extrema(freqs)))
+    axfinter = Axis(fig, xlabel="∫ $(scalarize_text)(k,ω) dk", xgridvisible=false, xticks=[0.0])
     structurelayout[4,2] = axfinter
     linkyaxes!(axfinter, axinter)
     hideydecorations!(axfinter, ticks = false, grid = false)
-    
-    oc_fintegrand_intra = interpolateconductivityk(vcomp=Intra(), μoffset=μintra, t=t, t′=t′, Δ=Δ, T=T, T₀=T₀, Z=Z, kalg=kalg, falg=falg, natol=natol, nrtol=nrtol, nalg=nalg, bzkind=bzkind,
-            μlims=μlims, ν=ν, nsp=nsp, ωlims=ωlims, Ω=Ωintra, atol=atol, rtol=rtol, io=io, verb=verb, tolratio=tolratio, prec=prec, gauge=gauge)
-    oc_fintegrand_inter = interpolateconductivityk(vcomp=Inter(), μoffset=μinter, t=t, t′=t′, Δ=Δ, T=T, T₀=T₀, Z=Z, kalg=kalg, falg=falg, natol=natol, nrtol=nrtol, nalg=nalg, bzkind=bzkind,
-            μlims=μlims, ν=ν, nsp=nsp, ωlims=ωlims, Ω=Ωinter, atol=atol, rtol=rtol, io=io, verb=verb, tolratio=tolratio, prec=prec, gauge=gauge)
+
+    oc_fintegrand_intra = interpolateconductivityk(; μoffset=μintra, ωlims, kws..., vcomp=Intra(), Ω=Ωintra)
+    oc_fintegrand_inter = interpolateconductivityk(; μoffset=μinter, ωlims, kws..., vcomp=Inter(), Ω=Ωinter)
 
     # dat_f_intra = [oc_fintegrand_intra(f*unit(t), AutoBZCore.NullParameters()) for f in freqs]
     # dat_f_inter = [oc_fintegrand_inter(f*unit(t), AutoBZCore.NullParameters()) for f in freqs]
 
-    lines!(axfintra, ustrip.(uconvert.(unit(atol)/unit(t), scalarize.(oc_fintegrand_intra.(unit(t) .* freqs)))), freqs, color=cintra)
-    lines!(axfinter, ustrip.(uconvert.(unit(atol)/unit(t), scalarize.(oc_fintegrand_inter.(unit(t) .* freqs)))), freqs, color=cinter)
+    lines!(axfintra, ustrip.(uconvert.(unit(σatol)/unit(t), scalarize.(oc_fintegrand_intra.(unit(t) .* freqs)))), freqs, color=cintra)
+    lines!(axfinter, ustrip.(uconvert.(unit(σatol)/unit(t), scalarize.(oc_fintegrand_inter.(unit(t) .* freqs)))), freqs, color=cinter)
 
 
     colsize!(structurelayout, 1, Relative(4/5))
