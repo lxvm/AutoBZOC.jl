@@ -32,12 +32,15 @@ const default = (;
     t′ = 0.05u"eV",
     Δ = 0.0u"eV",
     nalg = Falsi(),
+    nfalg = AuxQuadGKJL(order=7),
+    nkalg = IAI(AuxQuadGKJL(order=7)),
     natol = 1e-5,
     nrtol = 1e-5,
     μlims = (-2.0u"eV", 2.0u"eV"),
     Ωintra = 0.0u"eV",
     Ωinter = 0.4u"eV",
-    Tseries = ntuple(n -> 2.0 ^ (9-n) * u"K", 3),
+    Tseries = [256.0u"K", 181.0u"K", 128.0u"K", 90.5u"K", 64.0u"K"],
+    Ωseries = [0.0u"eV", 0.4u"eV"],
     T = 100.0u"K",
     T₀ = 300.0u"K",
     Z = 0.5,
@@ -52,8 +55,8 @@ const default = (;
     tolratio=100,
     ν = 1.0,
     nsp = 2,
-    falg = AuxQuadGKJL(),
-    kalg = PTR(npt=100, nthreads=1),
+    σfalg = AuxQuadGKJL(order=7),
+    σkalg = IAI(AuxQuadGKJL(order=7)),
     bzkind = CubicSymIBZ(),
     prec = Float64,
     Nk = 1000,
@@ -62,6 +65,11 @@ const default = (;
     gauge = Hamiltonian(),
     vcomp = Whole(),
     coord = Cartesian(),
+    nworkers = 1,
+    interp = false,
+    nsample = 3,
+    estkalg=PTR(npt=100),
+    estfalg=QuadratureFunction(npt=100),
 )
 
 include("makieplots.jl")
@@ -73,6 +81,8 @@ include("fig3.jl")
 include("fig3a.jl")
 include("fig3_aux.jl")
 include("fig3a_aux.jl")
+include("fig_breakeven.jl")
+include("fig_breakeven_aux.jl")
 include("make.jl")
 
 end # module AutoBZOC

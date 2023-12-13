@@ -103,3 +103,10 @@ function fermi_liquid_beta(; kws...)
     (; t, T, prec) = merge(default, NamedTuple(kws))
     return prec(1/uconvert(unit(t), u"k_au"*T))
 end
+
+function fermi_liquid_convergence(; kws...)
+    η = fermi_liquid_scattering(; kws...)
+    h, = t2gmodel(; kws...)
+    vT = AutoBZ.velocity_bound(h)
+    return AutoBZ.freq2rad(η/vT)
+end

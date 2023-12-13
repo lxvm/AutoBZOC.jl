@@ -9,7 +9,7 @@ using ColorSchemes, Colors
 function fig3a_aux(; densitycolormap=:RdBu, color=:purple, auxfield=:aux, alpha=1.0,
     Ωaux=0.0u"eV", kws...)
 
-    (; scalarize, scalarize_text, Nk, Nω, NΩ, σatol, σrtol, σauxatol, σauxrtol, t, Ωinter, Ωintra, Ωlims, μlims, prec, falg, gauge, coord, auxfun, vcomp) = merge(default, NamedTuple(kws))
+    (; scalarize, scalarize_text, Nk, Nω, NΩ, σatol, σrtol, σauxatol, σauxrtol, t, Ωinter, Ωintra, Ωlims, μlims, prec, σfalg, gauge, coord, auxfun, vcomp) = merge(default, NamedTuple(kws))
     h, bz = t2gmodel(; kws..., gauge=Wannier())
 
     μ = findchempot(; kws...)
@@ -23,7 +23,7 @@ function fig3a_aux(; densitycolormap=:RdBu, color=:purple, auxfield=:aux, alpha=
     μoffset = -Ω/2
     oc = FourierIntegrand((x, f) -> ustrip(scalarize(getproperty(AutoBZ.aux_transport_fermi_integrand_inside(f*unit(t), auxfun; Σ, n=0, β, Ω=prec(Ω), μ=prec(μoffset), hv_k=x), auxfield))), hv)
 
-    oc_kintegrand = AuxOpticalConductivityIntegrand(AutoBZ.lb(Σ), AutoBZ.ub(Σ), falg, hv, auxfun; Σ, β, Ω=prec(Ω), μ=prec(μoffset), reltol=AuxValue(σrtol, σauxrtol))
+    oc_kintegrand = AuxOpticalConductivityIntegrand(AutoBZ.lb(Σ), AutoBZ.ub(Σ), σfalg, hv, auxfun; Σ, β, Ω=prec(Ω), μ=prec(μoffset), reltol=AuxValue(σrtol, σauxrtol))
 
     pts = Dict{Symbol,SVector{3,Float64}}(
         :R => [0.5, 0.5, 0.5],
@@ -83,7 +83,7 @@ function fig3a_aux(; densitycolormap=:RdBu, color=:purple, auxfield=:aux, alpha=
     hidexdecorations!(axk, ticks = false, grid = false)
 
     # problem with nearly-degenerate eigenvectors is that
-    dat_k = [oc_kintegrand(map(prec, k), AutoBZ.CanonicalParameters()) for k in kpi]
+    dat_k = [oc_kintegrand(map(prec, k), AutoBZCore.NullParameters()) for k in kpi]
 
 
     lines!(axk, kloc, ustrip.(scalarize.(getproperty.(dat_k, Ref(auxfield)))); color)

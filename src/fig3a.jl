@@ -8,7 +8,7 @@ using ColorSchemes, Colors
 
 function fig3a(; cintra=:orange, cinter=:green, alpha=1.0, ylims=(0, 50), kws...)
 
-    (; scalarize, scalarize_text, Nk, Nω, NΩ, σatol, σrtol, t, Ωintra, Ωinter, Ωlims, μlims, prec, falg, gauge, coord, σudisplay, σufactor, nsp, ndim) = merge(default, NamedTuple(kws))
+    (; scalarize, scalarize_text, Nk, Nω, NΩ, σatol, σrtol, t, Ωintra, Ωinter, Ωlims, μlims, prec, σfalg, gauge, coord, σudisplay, σufactor, nsp, ndim) = merge(default, NamedTuple(kws))
     h, bz = t2gmodel(; kws..., gauge=Wannier())
 
     μ = findchempot(; kws...)
@@ -24,8 +24,8 @@ function fig3a(; cintra=:orange, cinter=:green, alpha=1.0, ylims=(0, 50), kws...
     ocintra = FourierIntegrand((x, f) -> ustrip(scalarize(AutoBZ.transport_fermi_integrand_inside(f*unit(t); Σ, n=0, β, Ω=prec(Ωintra), μ=prec(μintra), hv_k=x))), hvintra)
     ocinter = FourierIntegrand((x, f) -> ustrip(scalarize(AutoBZ.transport_fermi_integrand_inside(f*unit(t); Σ, n=0, β, Ω=prec(Ωinter), μ=prec(μinter), hv_k=x))), hvinter)
 
-    oc_kintegrand_intra = OpticalConductivityIntegrand(AutoBZ.lb(Σ), AutoBZ.ub(Σ), falg, hvintra; Σ, β, Ω=prec(Ωintra), μ=prec(μintra), reltol=σrtol)
-    oc_kintegrand_inter = OpticalConductivityIntegrand(AutoBZ.lb(Σ), AutoBZ.ub(Σ), falg, hvinter; Σ, β, Ω=prec(Ωinter), μ=prec(μinter), reltol=σrtol)
+    oc_kintegrand_intra = OpticalConductivityIntegrand(AutoBZ.lb(Σ), AutoBZ.ub(Σ), σfalg, hvintra; Σ, β, Ω=prec(Ωintra), μ=prec(μintra), reltol=σrtol)
+    oc_kintegrand_inter = OpticalConductivityIntegrand(AutoBZ.lb(Σ), AutoBZ.ub(Σ), σfalg, hvinter; Σ, β, Ω=prec(Ωinter), μ=prec(μinter), reltol=σrtol)
 
     pts = Dict{Symbol,SVector{3,Float64}}(
         :R => [0.5, 0.5, 0.5],
@@ -118,8 +118,8 @@ function fig3a(; cintra=:orange, cinter=:green, alpha=1.0, ylims=(0, 50), kws...
     hidexdecorations!(axkinter, ticks = false, grid = false)
 
     # problem with nearly-degenerate eigenvectors is that
-    dat_k_intra = [oc_kintegrand_intra(map(prec, k), AutoBZ.CanonicalParameters()) for k in kpi]
-    dat_k_inter = [oc_kintegrand_inter(map(prec, k), AutoBZ.CanonicalParameters()) for k in kpi]
+    dat_k_intra = [oc_kintegrand_intra(map(prec, k), AutoBZCore.NullParameters()) for k in kpi]
+    dat_k_inter = [oc_kintegrand_inter(map(prec, k), AutoBZCore.NullParameters()) for k in kpi]
 
 
     lines!(axkintra, kloc, ustrip.(scalarize.(dat_k_intra)), color=cintra)
