@@ -1,4 +1,4 @@
-function make(; figurepath=pwd(), kpathdensity=true, oc_fermiliquid=true, crossover=true, kws...)
+function make(; figurepath=pwd(), kpathdensity=true, oc_fermiliquid=true, crossover=true, cfs=true, kws...)
     if kpathdensity
         f3a = fig3a(; kws...)
         save(joinpath(figurepath, "kpathdensity.png"), f3a)
@@ -12,6 +12,11 @@ function make(; figurepath=pwd(), kpathdensity=true, oc_fermiliquid=true, crosso
     if crossover
         fb = fig_breakeven(; kws...)
         save(joinpath(figurepath, "crossover.png"), fb)
+    end
+
+    if cfs
+        fc = fig_cfs(; kws...)
+        save(joinpath(figurepath, "cfs.png"), fc)
     end
 
     return nothing

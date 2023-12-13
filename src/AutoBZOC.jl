@@ -39,8 +39,9 @@ const default = (;
     μlims = (-2.0u"eV", 2.0u"eV"),
     Ωintra = 0.0u"eV",
     Ωinter = 0.4u"eV",
-    Tseries = [256.0u"K", 181.0u"K", 128.0u"K", 90.5u"K", 64.0u"K"],
-    Ωseries = [0.0u"eV", 0.4u"eV"],
+    Tseries = u"K" * [256.0, 181.0, 128.0, 90.5, 64.0],
+    Δseries = u"eV" * range(-1, 1, length=21),
+    Ωseries = u"eV" * [0.0, 0.4],
     T = 100.0u"K",
     T₀ = 300.0u"K",
     Z = 0.5,
@@ -83,6 +84,8 @@ include("fig3_aux.jl")
 include("fig3a_aux.jl")
 include("fig_breakeven.jl")
 include("fig_breakeven_aux.jl")
+include("fig_cfs.jl")
+include("fig_ibz.jl")
 include("make.jl")
 
 end # module AutoBZOC
