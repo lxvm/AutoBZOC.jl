@@ -69,7 +69,7 @@ auxiliary_counter_wrapper(auxfun) = (vs, G1, G2) -> begin
     return auxfun(vs, G1, G2)
 end
 
-function benchmarkauxconductivity(; io=stdout, verb=true, cachepath=pwd(), kws...)
+function benchmarkauxconductivity(; io=stdout, verb=true, cache=false, cachepath=pwd(), kws...)
 
     (; t, t′, Δ, ndim, Ω, σkalg, σfalg, σatol, σrtol, σauxatol, σauxrtol, vcomp, bzkind, prec, gauge, coord, nsample, auxfun) = merge(default, NamedTuple(kws))
 
@@ -79,15 +79,21 @@ function benchmarkauxconductivity(; io=stdout, verb=true, cachepath=pwd(), kws..
     μ = findchempot(; io, verb, cachepath, kws...)
     shift!(h, μ)
 
-    id = string((; t, t′, Δ, ndim, η, β, μ, Ω, σkalg, σfalg, σatol, σrtol, σauxatol, σauxrtol, vcomp, bzkind, prec, gauge, coord, auxfun))
+    id = string((; t, t′, Δ, ndim, η, β, μ, Ω, σkalg, σfalg, σatol, σrtol, σauxatol, σauxrtol, vcomp, bzkind, prec, gauge, coord, auxfun, cache))
 
     return jldopen(joinpath(cachepath, "cache-auxconductivity-benchmark.jld2"), "a+") do fn
         if !haskey(fn, id)
             verb && @info "Benchmarking conductivity to add to cache" id
 
+            if cache
+                solver = solverauxconductivity(; μ, bandwidth_bound=Ω, kws..., auxfun=auxiliary_counter_wrapper(auxfun), nworkers=1)
+            end
+
             samples = ntuple(nsample) do n
                 gcnt_aux[] = 0
-                solver = solverauxconductivity(; μ, bandwidth_bound=Ω, kws..., auxfun=auxiliary_counter_wrapper(auxfun), nworkers=1)
+                if !cache
+                    solver = solverauxconductivity(; μ, bandwidth_bound=Ω, kws..., auxfun=auxiliary_counter_wrapper(auxfun), nworkers=1)
+                end
                 stats = @timed solver(; Ω=prec(Ω))
                 numevals = gcnt_aux[]
                 merge(stats, (; numevals))

@@ -10,7 +10,7 @@ function solverdensity(; kws...)
     η = fermi_liquid_scattering(; kws...)
     β = fermi_liquid_beta(; kws...)
     Σ = EtaSelfEnergy(η)
-    w = AutoBZCore.workspace_allocate(h, AutoBZCore.period(h), Tuple(nworkers isa Int ? fill(nworkers, ndims(h)) : nworkers))
+    w = AutoBZCore.workspace_allocate_vec(h, AutoBZCore.period(h), Tuple(nworkers isa Int ? fill(nworkers, ndims(h)) : nworkers))
     abstol = natol*det(bz.B)
     reltol = nrtol
 

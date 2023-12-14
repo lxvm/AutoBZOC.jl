@@ -86,10 +86,15 @@ function t2gmodel(; kws...)
 
     # crystal field splitting on 1st orbital
     H[CartesianIndex(ntuple(zero,Val(d)))][1,1] += Δ
+    # we want to deform the bz along the direction of CFS without changing det(bz.B)
+    δ = exp(Δ/10t)
+    A = one(MMatrix{d,d,prec,d^2}) * δ^(-1/(d-1))
+    A[3,3] = δ
 
     # construct corresponding Brillouin zone
-    !iszero(Δ) && bzkind isa CubicSymIBZ && error("nonzero CFS breaks cubic symmetry in BZ")
-    bz = load_bz(bzkind, one(SMatrix{d,d,prec,d^2}) * u"Å")
+    # TODO: return InversionSymIBZ
+    !iszero(Δ) && bzkind isa CubicSymIBZ && error("nonzero CFS breaks cubic symmetry in BZ, try bzkind=InversionSymIBZ()")
+    bz = load_bz(bzkind, SMatrix(A) * u"Å")
 
     return HamiltonianInterp(AutoBZ.Freq2RadSeries(FourierSeries(similar(H, SM) .= H; period=prec(real(2one(t)*pi)))); gauge), bz
 end

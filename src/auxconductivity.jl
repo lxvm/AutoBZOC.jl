@@ -25,7 +25,7 @@ function solverauxconductivity(; μ, bandwidth_bound, kws...)
     Σ = EtaSelfEnergy(η)
     abstol = AuxValue(σatol, σauxatol)
     reltol = AuxValue(σrtol, σauxrtol)
-    w = AutoBZCore.workspace_allocate(hv, AutoBZCore.period(hv), Tuple(nworkers isa Int ? fill(nworkers, ndims(h)) : nworkers))
+    w = AutoBZCore.workspace_allocate_vec(hv, AutoBZCore.period(hv), Tuple(nworkers isa Int ? fill(nworkers, ndims(h)) : nworkers))
 
     if σkalg isa PTR || σkalg isa AutoPTR
         a, b = AutoBZ.fermi_window_limits(bandwidth_bound, β)
