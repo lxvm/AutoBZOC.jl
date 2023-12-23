@@ -51,6 +51,7 @@ end
 function t2gmodel(; kws...)
 
     (; t, t′, Δ, ndim, gauge, prec, bzkind) = merge(default, NamedTuple(kws))
+    info = (; name=:t2g, ndim, t, t′, Δ, gauge, bzkind, prec)
     d = ndim
     SM = SHermitianCompact{d,typeof(prec(t)),StaticArrays.triangularnumber(d)}
     # SM = SMatrix{d,d,typeof(prec(t)),d^2}
@@ -77,7 +78,7 @@ function t2gmodel(; kws...)
         j === nothing && continue
         count(==(1)∘abs, i.I) == d-1 || continue
         h = H[i]
-        par = prod(i.I[n] for n in eachindex(i.I) if n != j)
+        par = prod(i.I[n] for n in eachindex(i.I) if n != j; init=1)
         for k in PermGen(d-1)
             idx = CartesianIndex(ntuple(l -> k[l]>=j ? k[l]+1 : k[l], Val(d-1)))
             h[idx] = par*(sign(k)>0 ? t′ : conj(t′))
@@ -89,14 +90,14 @@ function t2gmodel(; kws...)
     # we want to deform the bz along the direction of CFS without changing det(bz.B)
     δ = exp(Δ/10t)
     A = one(MMatrix{d,d,prec,d^2}) * δ^(-1/(d-1))
-    A[3,3] = δ
+    A[d,d] = δ
 
     # construct corresponding Brillouin zone
     # TODO: return InversionSymIBZ
     !iszero(Δ) && bzkind isa CubicSymIBZ && error("nonzero CFS breaks cubic symmetry in BZ, try bzkind=InversionSymIBZ()")
     bz = load_bz(bzkind, SMatrix(A) * u"Å")
 
-    return HamiltonianInterp(AutoBZ.Freq2RadSeries(FourierSeries(similar(H, SM) .= H; period=prec(real(2one(t)*pi)))); gauge), bz
+    return HamiltonianInterp(AutoBZ.Freq2RadSeries(FourierSeries(similar(H, SM) .= H; period=prec(real(2one(t)*pi)))); gauge), bz, info
 end
 
 function fermi_liquid_scattering(; kws...)
@@ -104,14 +105,31 @@ function fermi_liquid_scattering(; kws...)
     return map(T -> prec(uconvert(unit(t), T^2*u"k_au"*pi/(Z*T₀))), T)
 end
 
-function fermi_liquid_beta(; kws...)
+function fermi_liquid_self_energy(; kws...)
+    η = fermi_liquid_scattering(; kws...)
+    return EtaSelfEnergy(η)
+end
+
+function inv_temp(; kws...)
     (; t, T, prec) = merge(default, NamedTuple(kws))
     return prec(1/uconvert(unit(t), u"k_au"*T))
 end
 
-function fermi_liquid_convergence(; kws...)
-    η = fermi_liquid_scattering(; kws...)
-    h, = t2gmodel(; kws...)
+function convergence(; kws...)
+    (; model, self_energy) = merge(default, NamedTuple(kws))
+    Σ = self_energy(; kws...)
+    η = AutoBZ.sigma_to_eta(Σ)
+    name, h, = model(; kws...)
     vT = AutoBZ.velocity_bound(h)
     return AutoBZ.freq2rad(η/vT)
+end
+
+function wannier90model(; seed, bzkind=FBZ(), kws...)
+    (; gauge, prec) = merge(default, NamedTuple(kws))
+    info = (; name=:wannier90, seed, gauge, bzkind, prec)
+    h_, bz_ = load_wannier90_data(seed; gauge, bz=bzkind)
+    f = AutoBZ.parentseries(h_)
+    h = HamiltonianInterp(AutoBZ.Freq2RadSeries(FourierSeries(f.c * u"eV"; period=f.t, offset=f.o, deriv=f.a)); gauge)
+    bz = SymmetricBZ(bz_.A * u"Å", bz_.B / u"Å", bz_.lims, bz_.syms)
+    return h, bz, info
 end

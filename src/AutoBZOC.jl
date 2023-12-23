@@ -7,6 +7,8 @@ using Unitful, UnitfulAtomic
 
 export make
 
+include("model.jl")
+
 """
     default
 
@@ -27,10 +29,12 @@ Multithreading can be adjusted with `nworkers` and `batchthreads`.
 const default = (;
     scalarize = real∘tr,
     scalarize_text = "Tr σ",
+    model = t2gmodel,
     ndim = 3,
     t = -0.25u"eV",
     t′ = 0.05u"eV",
     Δ = 0.0u"eV",
+    self_energy = fermi_liquid_self_energy,
     nalg = Falsi(),
     nfalg = AuxQuadGKJL(order=7),
     nkalg = IAI(AuxQuadGKJL(order=7)),
@@ -53,7 +57,7 @@ const default = (;
     auxfun = AutoBZ.default_transport_auxfun,
     σauxatol = 1e-3u"Å^-1",
     σauxrtol = 1e-3,
-    tolratio=100,
+    interptolratio=100,
     ν = 1.0,
     nsp = 2,
     σfalg = AuxQuadGKJL(order=7),
@@ -74,7 +78,6 @@ const default = (;
 )
 
 include("makieplots.jl")
-include("model.jl")
 include("density.jl")
 include("conductivity.jl")
 include("auxconductivity.jl")
