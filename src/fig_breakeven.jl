@@ -1,58 +1,56 @@
-function fig_breakeven(; kws...)
+function do_fig_breakeven(bench_func; series_Σ, series_p, kws...)
 
-    (; σatol, σrtol, estkalg, estfalg, Ωseries, Tseries) = merge(default, NamedTuple(kws))
+    (; selfenergy, config_quad_breakeven) = merge(default, NamedTuple(kws))
 
-    algs = (IAI(AuxQuadGKJL(order=7)), AutoPTR(nmin=1, nmax=typemax(Int)))
-    tdat = Array{Float64,3}(undef, length(Ωseries), length(Tseries), length(algs))
-    ndat = Array{Int,3}(undef, length(Ωseries), length(Tseries), length(algs))
-    retcode = Array{Bool,3}(undef, length(Ωseries), length(Tseries), length(algs))
+    algs = config_quad_breakeven
+    series_η = map(Σ -> AutoBZ.sigma_to_eta(Σ(0.0u"eV")), series_Σ)
+    tdat = Array{Float64,3}(undef, length(series_p), length(series_Σ), length(algs))
+    ndat = Array{Int,3}(undef, length(series_p), length(series_Σ), length(algs))
+    retcode = Array{Bool,3}(undef, length(series_p), length(series_Σ), length(algs))
     fill!(retcode, false)
-    estimates = batchsolveconductivity(; kws..., σatol=zero(σatol), σrtol=one(σrtol), kalg=estkalg, falg=estfalg)
-    σatolseries = map(norm, estimates)
-    for (k, σkalg) in enumerate(algs)
-        for (j, T) in enumerate(Tseries)
-            for (i, Ω) in enumerate(Ωseries)
+    for (k, alg) in enumerate(algs)
+        for (j, (η, Σ)) in enumerate(zip(series_η, series_Σ))
+            for (i, p) in enumerate(series_p)
                 try
-                    stats = benchmarkconductivity(; kws..., σkalg, T, Ω, σatol=σatolseries[i,j]*σrtol, σrtol=0)
-                    tdat[i,j,k] = stats.time
-                    ndat[i,j,k] = stats.numevals
+                    stats, = bench_func(i, j, alg)
+                    tdat[i,j,k] = stats.min.time
+                    ndat[i,j,k] = stats.min.numevals
                     retcode[i,j,k] = true
                 catch e
-                    @info "Benchmark errored" e σkalg T Ω
+                    @info "Benchmark errored" e alg η p
                 end
             end
         end
     end
-    ηseries = map(T -> fermi_liquid_scattering(; kws..., T), Tseries)
     fig = Figure(resolution=(800,1000))
     ax = Axis(fig[1,1],
         xlabel="η (eV)",
         ylabel="Wall clock time (s)",
         xscale = log10,
         yscale = log10,
-        xticks=collect(ustrip.(ηseries)),
+        xticks=collect(ustrip.(series_η)),
     )
-    twinax = Axis(fig[1,1], xaxisposition=:top, xlabel="T (K)", xscale = log10, yscale = log10, xticks=ustrip.(collect(Tseries)))
-    hidespines!(twinax)
-    hideydecorations!(twinax)
+    # twinax = Axis(fig[1,1], xaxisposition=:top, xlabel="T (K)", xscale = log10, yscale = log10, xticks=ustrip.(collect(series_T)))
+    # hidespines!(twinax)
+    # hideydecorations!(twinax)
     numevalsax = Axis(fig[2,1],
         xlabel="η (eV)",
         ylabel="# integrand evaluations",
         xscale = log10,
         yscale = log10,
-        xticks=collect(ustrip.(ηseries)),
+        xticks=collect(ustrip.(series_η)),
     )
-    numevalstwinax = Axis(fig[2,1], xaxisposition=:top, xlabel="T (K)", xscale = log10, yscale = log10, xticks=ustrip.(collect(Tseries)))
-    hidespines!(numevalstwinax)
-    hideydecorations!(numevalstwinax)
-    for (k, σkalg) in enumerate(algs)
-        for (i, Ω) in enumerate(Ωseries)
+    # numevalstwinax = Axis(fig[2,1], xaxisposition=:top, xlabel="T (K)", xscale = log10, yscale = log10, xticks=ustrip.(collect(series_T)))
+    # hidespines!(numevalstwinax)
+    # hideydecorations!(numevalstwinax)
+    for (k, quad_σ_k) in enumerate(algs)
+        for (i, p) in enumerate(series_p)
             jmask = retcode[i,:,k]
             any(jmask) || continue
-            scatter!(ax, collect(ustrip.(ηseries)), tdat[i,jmask,k], label=string(nameof(typeof(σkalg)), "@Ω=", Ω))
-            scatter!(twinax, collect(ustrip.(Tseries)), tdat[i,jmask,k], label=string(nameof(typeof(σkalg)), "@Ω=", Ω))
-            scatter!(numevalsax, collect(ustrip.(ηseries)), ndat[i,jmask,k], label=string(nameof(typeof(σkalg)), "@Ω=", Ω))
-            scatter!(numevalstwinax, collect(ustrip.(Tseries)), ndat[i,jmask,k], label=string(nameof(typeof(σkalg)), "@Ω=", Ω))
+            scatter!(ax, collect(ustrip.(series_η)), tdat[i,jmask,k], label=string(nameof(typeof(quad_σ_k)), "@p=", p))
+            # scatter!(twinax, collect(ustrip.(series_T)), tdat[i,jmask,k], label=string(nameof(typeof(quad_σ_k)), "@p=", p))
+            scatter!(numevalsax, collect(ustrip.(series_η)), ndat[i,jmask,k], label=string(nameof(typeof(quad_σ_k)), "@p=", p))
+            # scatter!(numevalstwinax, collect(ustrip.(series_T)), ndat[i,jmask,k], label=string(nameof(typeof(quad_σ_k)), "@p=", p))
         end
     end
     axislegend(ax)
@@ -61,47 +59,25 @@ function fig_breakeven(; kws...)
     fig
 end
 
-const gcnt = fill(0)
-
-function auxiliary_counter(vs, G1, G2)
-    gcnt[] += 1
-    return 1.0
+function fig_breakeven(; kws...)
+    (; selfenergy, series_T, atol_σ, rtol_σ, quadest_σ_k, quadest_σ_ω, config_vcomp) = merge(default, NamedTuple(kws))
+    series_Ω = sort!(unique(map(v -> v.Ω, config_vcomp)))
+    series_Σ = [selfenergy(; kws..., T)[1] for T in series_T]
+    series_μ = [findchempot(; kws..., T)[1] for T in series_T]
+    estimates = stack([conductivity_batchsolve(; kws..., T, μ, series_Ω, atol_σ=zero(atol_σ), rtol_σ=one(rtol_σ), quad_σ_k=quadest_σ_k, quad_σ_ω=quadest_σ_ω)[1] for (T, μ) in zip(series_T, series_μ)])
+    series_atol_σ = map(norm, estimates)
+    do_fig_breakeven(; series_Σ, series_p=series_Ω) do i, j, quad_σ_k
+        benchmark_conductivity(; kws..., quad_σ_k, μ=series_μ[j], T=series_T[j], Ω=series_Ω[i], atol_σ=series_atol_σ[i,j]*rtol_σ, rtol_σ=0)
+    end
 end
 
-function benchmarkconductivity(; io=stdout, verb=true, cache=false, cachepath=pwd(), kws...)
-
-    (; t, t′, Δ, ndim, Ω, σkalg, σfalg, σatol, σrtol, vcomp, bzkind, prec, gauge, coord, nsample) = merge(default, NamedTuple(kws))
-
-    h, bz = t2gmodel(; kws..., gauge=Wannier())
-    η = fermi_liquid_scattering(; kws...)
-    β = fermi_liquid_beta(; kws...)
-    μ = findchempot(; io, verb, cachepath, kws...)
-    shift!(h, μ)
-
-    id = string((; t, t′, Δ, ndim, η, β, μ, Ω, σkalg, σfalg, σatol, σrtol, vcomp, bzkind, prec, gauge, coord, cache))
-
-    return jldopen(joinpath(cachepath, "cache-conductivity-benchmark.jld2"), "a+") do fn
-        if !haskey(fn, id)
-            verb && @info "Benchmarking conductivity to add to cache" id
-
-            if cache
-                solver = solverauxconductivity(; μ, bandwidth_bound=Ω, kws..., auxfun=auxiliary_counter, σauxatol=det(bz.B), σauxrtol=1, nworkers=1)
-            end
-            samples = ntuple(nsample) do n
-                gcnt[] = 0
-                if !cache
-                    solver = solverauxconductivity(; μ, bandwidth_bound=Ω, kws..., auxfun=auxiliary_counter, σauxatol=det(bz.B), σauxrtol=1, nworkers=1)
-                end
-                stats = @timed solver(; Ω=prec(Ω))
-                numevals = gcnt[]
-                merge(stats, (; numevals))
-            end
-
-            fn[id] = samples[findmin(s -> s.time, samples)[2]]
-
-            verb && @printf "Done benchmarking %5i samples with %.3e s average\n" nsample sum(s -> s.time, samples)/nsample
-        end
-        return fn[id]
+function fig_breakeven_trgloc(; kws...)
+    (; selfenergy, series_T, atol_g, rtol_g, quad_g_k, config_vcomp) = merge(default, NamedTuple(kws))
+    series_ω = sort!(unique(map(v -> v.Ω, config_vcomp)))
+    series_μ = [findchempot(; kws..., T)[1] for T in series_T]
+    series_Σ = [selfenergy(; kws..., T)[1] for T in series_T]
+    # benchmark_trgloc(; kws..., quad_g_k, μ=series_μ[1], T=series_T[1], ω=series_ω[1], atol_g=atol_g, rtol_g=0)
+    do_fig_breakeven(; series_Σ, series_p=series_ω) do i, j, quad_g_k
+        benchmark_trgloc(; kws..., quad_g_k, μ=series_μ[j], T=series_T[j], ω=series_ω[i], atol_g, rtol_g=0)
     end
-
 end

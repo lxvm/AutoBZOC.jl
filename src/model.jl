@@ -3,6 +3,7 @@ using Unitful, UnitfulAtomic
 using Permutations
 using LinearAlgebra
 using AutoBZ
+using Brillouin
 
 
 function ogmodel(; kws...)
@@ -48,7 +49,7 @@ function ogmodel(; kws...)
     return FourierSeries(H, period=real(2one(t)*pi))
 end
 
-function t2gmodel(; kws...)
+function t2g_model(; kws...)
 
     (; t, t′, Δ, ndim, gauge, prec, bzkind) = merge(default, NamedTuple(kws))
     info = (; name=:t2g, ndim, t, t′, Δ, gauge, bzkind, prec)
@@ -95,36 +96,64 @@ function t2gmodel(; kws...)
     # construct corresponding Brillouin zone
     # TODO: return InversionSymIBZ
     !iszero(Δ) && bzkind isa CubicSymIBZ && error("nonzero CFS breaks cubic symmetry in BZ, try bzkind=InversionSymIBZ()")
-    bz = load_bz(bzkind, SMatrix(A) * u"Å")
-
+    bz = if bzkind isa IBZ
+        @assert ndim == 3
+        atom_species = [
+            "Sr",
+            "V",
+            "O",
+            "O",
+            "O",
+        ]
+        atom_pos = [
+            0.0 0.0 0.0
+            0.5 0.5 0.5
+            0.0 0.5 0.5
+            0.5 0.0 0.5
+            0.5 0.5 0.0
+        ]
+        load_bz(bzkind, bz.A, bz.B, atom_species, atom_pos')
+        # TODO change units of A, B
+    else
+        load_bz(bzkind, SMatrix(A) * u"Å")
+    end
     return HamiltonianInterp(AutoBZ.Freq2RadSeries(FourierSeries(similar(H, SM) .= H; period=prec(real(2one(t)*pi)))); gauge), bz, info
 end
 
-function fermi_liquid_scattering(; kws...)
-    (; t, T, T₀, Z, prec) = merge(default, NamedTuple(kws))
-    return map(T -> prec(uconvert(unit(t), T^2*u"k_au"*pi/(Z*T₀))), T)
+
+function fermiliquid_selfenergy(; T, kws...)
+    (; t, T₀, Z, prec, lims_Σ) = merge(default, NamedTuple(kws))
+    η = map(T -> prec(uconvert(unit(t), T^2*u"k_au"*pi/(Z*T₀))), T)
+    info = (; name=:fermiliquid, η, T, T₀, Z, prec, lims_Σ)
+    return ConstScalarSelfEnergy(-im*η, map(prec, lims_Σ)...), info
 end
 
-function fermi_liquid_self_energy(; kws...)
-    η = fermi_liquid_scattering(; kws...)
-    return EtaSelfEnergy(η)
+function autobz_selfenergy(; file_selfenergy, config_selfenergy=(;), kws...)
+    (; prec, lims_Σ) = merge(default, NamedTuple(kws))
+    Σ = load_self_energy(file_selfenergy; precision=prec, config_selfenergy...)
+    lims_Σ = (prec(max(Σ.lb*u"eV", lims_Σ[1])), prec(min(Σ.ub*u"eV", lims_Σ[2])))
+    info = (; name=:autobz, file=file_selfenergy, precision=prec, lims_Σ, config_selfenergy...)
+    return MatrixSelfEnergy(lims_Σ...) do ω
+        Σ(prec(ω/u"eV"))*u"eV"
+    end, info
 end
 
-function inv_temp(; kws...)
-    (; t, T, prec) = merge(default, NamedTuple(kws))
+# make T a required keyword so that the caller has to set it explicitly
+function invtemp(; T, kws...)
+    (; t, prec) = merge(default, NamedTuple(kws))
     return prec(1/uconvert(unit(t), u"k_au"*T))
 end
 
 function convergence(; kws...)
-    (; model, self_energy) = merge(default, NamedTuple(kws))
-    Σ = self_energy(; kws...)
+    (; model, selfenergy) = merge(default, NamedTuple(kws))
+    Σ, = selfenergy(; kws...)
     η = AutoBZ.sigma_to_eta(Σ)
-    name, h, = model(; kws...)
+    h, = model(; kws...)
     vT = AutoBZ.velocity_bound(h)
     return AutoBZ.freq2rad(η/vT)
 end
 
-function wannier90model(; seed, bzkind=FBZ(), kws...)
+function wannier90_model(; seed, bzkind=FBZ(), kws...)
     (; gauge, prec) = merge(default, NamedTuple(kws))
     info = (; name=:wannier90, seed, gauge, bzkind, prec)
     h_, bz_ = load_wannier90_data(seed; gauge, bz=bzkind)
@@ -132,4 +161,53 @@ function wannier90model(; seed, bzkind=FBZ(), kws...)
     h = HamiltonianInterp(AutoBZ.Freq2RadSeries(FourierSeries(f.c * u"eV"; period=f.t, offset=f.o, deriv=f.a)); gauge)
     bz = SymmetricBZ(bz_.A * u"Å", bz_.B / u"Å", bz_.lims, bz_.syms)
     return h, bz, info
+end
+
+default_kω_order(alg_k, alg_ω) = !(alg_k isa AutoPTR || alg_k isa PTR)
+
+function cubic_path(; kws...)
+    (; model) = merge(default, NamedTuple(kws))
+
+    _, bz, = model(; kws...)
+    @assert LinearAlgebra.checksquare(bz.A) == 3
+    pts = Dict{Symbol,SVector{3,Float64}}(
+        :R => [0.5, 0.5, 0.5],
+        :M => [0.5, 0.5, 0.0],
+        :Γ => [0.0, 0.0, 0.0],
+        :X => [0.0, 0.5, 0.0],
+    )
+    paths = [
+        [:Γ, :R, :X, :M, :Γ],
+    ]
+    basis = Brillouin.KPaths.reciprocalbasis(collect(eachcol(bz.B'bz.A)))
+    setting = Ref(Brillouin.LATTICE)
+    return KPath(pts, paths, basis, setting)
+end
+
+function sgnum_path(; sgnum, kws...)
+    (; model) = merge(default, NamedTuple(kws))
+
+    _, bz, = model(; kws...)
+    return irrfbz_path(sgnum, collect(eachcol(bz.B'bz.A)))
+end
+
+function cfs_path(; kws...)
+    A = 2pi*I(3)
+    irrfbz_path(sgnum, A)
+    pts = Dict{Symbol,SVector{3,Float64}}(
+        :Z => [0.0, 0.0, 0.5],
+        :R => [0.5, 0.0, 0.5],
+        :M => [0.5, 0.5, 0.0],
+        :A => [0.5, 0.5, 0.5],
+        :Γ => [0.0, 0.0, 0.0],
+        :X => [0.5, 0.0, 0.0],
+    )
+    paths = [
+        [:Γ, :X, :M, :Γ, :Z, :R, :A, :Z],
+        [:X, :R],
+        [:M, :A],
+    ]
+    basis = Brillouin.KPaths.reciprocalbasis(A)
+    setting = Ref(Brillouin.LATTICE)
+    return KPath(pts, paths, basis, setting)
 end

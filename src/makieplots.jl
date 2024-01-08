@@ -22,8 +22,8 @@ end
 function Makie.convert_arguments(::Type{<:KPathInterpPlot}, kps::KPathSegment, h::AbstractHamiltonianInterp)
     B = reduce(hcat, kps.basis)
     kloc = cumdists([kps.setting == Brillouin.CARTESIAN ? k : B*k for k in kps.kpath])
-    data = reinterpret(reshape, Float64, [gauge(h) isa Hamiltonian ? h(k).values : AutoBZ.to_gauge(Hamiltonian(), h(k)).values for k in kps.kpath])
-    return (kloc, data)
+    data = stack([gauge(h) isa Hamiltonian ? h(k).values : AutoBZ.to_gauge(Hamiltonian(), h(k)).values for k in kps.kpath])
+    return (kloc, data/oneunit(eltype(data)))
 end
 
 function Makie.plot!(kpp::KPathInterpPlot{<:Tuple{AbstractVector{<:Real},AbstractMatrix{<:Real}}})
@@ -67,12 +67,11 @@ function Makie.plot!(kpp::KPathInterpPlot{<:Tuple{AbstractVector{<:Real},Abstrac
     return kpp
 end
 
-function Makie.convert_arguments(::Type{<:KPathInterpPlot}, kps::KPathSegment, freq::AbstractVector{<:Real}, density::FourierIntegrand)
+function Makie.convert_arguments(::Type{<:KPathInterpPlot}, kps::KPathSegment, freq::AbstractVector{<:Number}, density::FourierIntegrand)
     B = reduce(hcat, kps.basis)
     kloc = cumdists([kps.setting == Brillouin.CARTESIAN ? k : B*k for k in kps.kpath])
-    wdat = [FourierValue(k, density.w(k)) for k in kps.kpath]
-    data = [density(k, f) for k in wdat, f in freq]
-    return (kloc, freq, data)
+    data = [density(FourierValue(k, density.w(k)), f) for k in kps.kpath, f in freq]
+    return (kloc, freq/oneunit(eltype(freq)), data/maximum(data))
 end
 
 function Makie.plot!(kpp::KPathInterpPlot{<:Tuple{AbstractVector{<:Real},AbstractVector{<:Real},AbstractMatrix{<:Real}}})
@@ -80,7 +79,7 @@ function Makie.plot!(kpp::KPathInterpPlot{<:Tuple{AbstractVector{<:Real},Abstrac
     freq = kpp[2][]
     data = kpp[3][]
     # TODO make this function observable compatible
-    heatmap!(kpp, kloc, freq, data, colormap=kpp.densitycolormap, alpha=kpp.alpha)
+    heatmap!(kpp, kloc, freq, data; colormap=kpp.densitycolormap, alpha=kpp.alpha)
 
     return kpp
 end

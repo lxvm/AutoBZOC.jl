@@ -1,91 +1,74 @@
-using HChebInterp
-using NonlinearSolve
-using JLD2
-using Printf
+using AutoBZ
 
-function solverdensity(; kws...)
-    (; model, self_energy, natol, nrtol, nfalg, nkalg, nworkers) = merge(default, NamedTuple(kws))
+# h, Σ, and β are fixed parameters
+# μ is an interpolation parameter
+function density_solver(; kws...)
+    (; model, selfenergy, choose_kω_order, atol_n, rtol_n, quad_n_ω, quad_n_k, nworkers) = merge(default, NamedTuple(kws))
 
-    h, bz, modelinfo = model(; kws...)
-    Σ = self_energy(; kws...)
-    β = inv_temp(; kws...)
+    h, bz, info_model = model(; kws...)
+    Σ, info_selfenergy = selfenergy(; kws...)
+    β = invtemp(; kws...)
+    is_order_kω = choose_kω_order(quad_n_k, quad_n_ω)
+    info = (; model=info_model, selfenergy=info_selfenergy, β, quad_n_ω, quad_n_k, is_order_kω, atol_n, rtol_n)
+
     w = AutoBZCore.workspace_allocate_vec(h, AutoBZCore.period(h), Tuple(nworkers isa Int ? fill(nworkers, ndims(h)) : nworkers))
-    abstol = natol*det(bz.B)
-    reltol = nrtol
-    info = (; modelinfo, β, Σ, nfalg, nkalg, natol, nrtol)
-
-    ρ = if nkalg isa PTR || nkalg isa AutoPTR
+    ρ = if !is_order_kω
         # inner BZ integral
         f = AutoBZ.parentseries(h)
         bandwidth_bound = sqrt(sum(norm(c)^2 for c in f.c) - norm(f.c[-CartesianIndex(f.o)])^2)
-        integrand = ElectronDensityIntegrand(bz, nkalg, w; Σ, β, abstol=abstol/bandwidth_bound, reltol)
-        IntegralSolver(integrand, AutoBZ.lb(Σ), AutoBZ.ub(Σ), nfalg; abstol, reltol)
+        integrand = ElectronDensityIntegrand(bz, quad_n_k, w; Σ, β, abstol=atol_n*det(bz.B)/bandwidth_bound, reltol=rtol_n)
+        IntegralSolver(integrand, AutoBZ.lb(Σ), AutoBZ.ub(Σ), quad_n_ω; abstol=atol_n*det(bz.B), reltol=rtol_n)
     else
         # inner frequency integral
-        integrand = ElectronDensityIntegrand(AutoBZ.lb(Σ), AutoBZ.ub(Σ), nfalg, w; Σ, β, abstol=abstol/det(bz.B)/nsyms(bz), reltol)
-        IntegralSolver(integrand, bz, nkalg; abstol, reltol)
+        integrand = ElectronDensityIntegrand(AutoBZ.lb(Σ), AutoBZ.ub(Σ), quad_n_ω, w; Σ, β, abstol=atol_n*det(bz.B)/det(bz.B)/nsyms(bz), reltol=rtol_n)
+        IntegralSolver(integrand, bz, quad_n_k; abstol=atol_n*det(bz.B), reltol=rtol_n)
     end
     return ρ, det(bz.B), info
 end
 
-function interpolatedensity(; cachepath=pwd(), batchthreads=Threads.nthreads(), kws...)
+function density_interp(; cache_file_interp_density="cache-interp-density.jld2", kws...)
+    (; atol_n, rtol_n, lims_μ, interptolratio, prec, cache_dir, nthreads) = merge(default, NamedTuple(kws))
 
-    (; natol, nrtol, μlims, interptolratio, prec) = merge(default, NamedTuple(kws))
-
-    ρ, V, solverinfo = solverdensity(; kws..., natol=natol/interptolratio, nrtol=nrtol/interptolratio)
-
-    info = (; solverinfo..., natol, nrtol, interptolratio, prec, μlims)
+    ρ, V, info_solver = density_solver(; kws..., atol_n=atol_n/interptolratio, rtol_n=rtol_n/interptolratio)
+    info = (; info_solver..., atol_n, rtol_n, interptolratio, prec, lims_μ)
     id = string(info)
 
-    return jldopen(joinpath(cachepath, "cache-density-interp.jld2"), "a+") do fn
-        if !haskey(fn, id)
-            @info "Density interpolation started" cachepath info...
-
-            cnt::Int = 0
-            f = BatchFunction() do μ
-                cnt += nbatch = length(μ)
-                dat = @timed batchsolve(ρ, paramzip(; μ); nthreads=batchthreads)
-                @debug "Density interpolation" batch_elapsed=dat.time batch_samples=nbatch
-                dat.value
-            end
-
-            fn[id] = stats = @timed hchebinterp(f, map(prec, μlims)...; atol=natol*V, rtol=nrtol)
-            @info "Density interpolation finished" elapsed=stats.time samples=cnt
-        end
-        ρ_interp = fn[id].value
-        return ((; μ) -> ρ_interp(μ)), V, info
+    lb, ub = map(prec, lims_μ)
+    cache_path = joinpath(cache_dir, cache_file_interp_density)
+    @info "Density interpolation" info...
+    ρ_interp = cache_hchebinterp(lb, ub, atol_n*V, rtol_n, cache_path, id) do μ
+        batchsolve(ρ, paramzip(; μ); nthreads=nthreads)
     end
-
+    return ((; μ) -> ρ_interp(μ)), V, info
 end
 
+function density_batchsolve(; μ_series, cache_file_values_density="cache-values-density.jld2", kws...)
+    (; prec, cache_dir, nthreads) = merge(default, NamedTuple(kws))
 
-function findchempot(; cachepath=pwd(), kws...)
-
-    (; natol, nrtol, nalg, μlims, ν, nsp, prec, interp) = merge(default, NamedTuple(kws))
-
-    ρ, V, densityinfo = interp ? interpolatedensity(; kws...) : solverdensity(; kws...)
-
-    info = (; densityinfo..., natol, nrtol, prec, μlims, ν, nsp, nalg)
+    ρ, V, info_solver = density_solver(; kws...)
+    info = (; info_solver..., prec, μ=hash(μ_series))
     id = string(info)
 
-    return jldopen(joinpath(cachepath, "cache-chempot.jld2"), "a+") do fn
-        if !haskey(fn, id)
-            @info "Chemical potential started" cachepath info...
+    cache_path = joinpath(cache_dir, cache_file_values_density)
+    @info "Density evaluation" info...
+    data = cache_batchsolve(ρ, paramzip(; μ=prec.(ω_series)), cache_path, id, nthreads)
+    return data, V, info
+end
 
-            cnt::Int = 0
-            u = prec(oneunit(eltype(μlims)))
-            uμlims = map(x -> prec(x/u), μlims)
-            prob = IntervalNonlinearProblem(uμlims, (ρ, V, prec(ν/nsp))) do μ, (ρ, V, ν)
-                cnt += 1
-                return oftype(ν, ρ(; μ=μ*u)/V)-ν
-            end
-            stats = @timed(solve(prob, nalg, abstol=natol, reltol=nrtol))
+function findchempot(; cache_filroot_es_chempot="cache-roots-chempot.jld2", kws...)
+    (; atol_n, rtol_n, root_n_μ, lims_μ, ν, nsp, prec, interp_μ, cache_dir) = merge(default, NamedTuple(kws))
 
-            fn[id] = merge(stats, (; value=stats.value.u*u))
+    ρ, V, info_density = interp_μ ? density_interp(; kws...) : density_solver(; kws...)
+    info = (; info_density..., atol_n, rtol_n, prec, lims_μ, ν, nsp, root_n_μ, interp_μ)
+    id = string(info)
 
-            @info "Chemical potential finished" elapsed=stats.time samples=cnt
-        end
-        fn[id].value, info
+    u = prec(oneunit(eltype(lims_μ)))
+    lb, ub = map(x -> prec(x/u), lims_μ)
+    p = (u, ρ, V, prec(ν/nsp))
+    cache_path = joinpath(cache_dir, cache_filroot_es_chempot)
+    @info "Chemical potential finding" info...
+    μ = cache_rootsolve(lb, ub, p, root_n_μ, atol_n, rtol_n, cache_path, id) do μ, (u, ρ, V, ν)
+        oftype(ν, ρ(; μ=μ*u)/V)-ν
     end
-
+    return u*μ, V, info
 end
