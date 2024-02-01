@@ -204,12 +204,13 @@ function convergence(; kws...)
     return AutoBZ.freq2rad(η/vT)
 end
 
-function wannier90_model(; seed, bzkind=FBZ(), kws...)
+function wannier90_model(; seed, bzkind=FBZ(), config_wannier90=(;), kws...)
     (; gauge, prec) = merge(default, NamedTuple(kws))
-    info = (; name=:wannier90, seed, gauge, bzkind, prec)
-    h_, bz_ = load_wannier90_data(seed; gauge, bz=bzkind)
-    f = AutoBZ.parentseries(h_)
-    h = HamiltonianInterp(AutoBZ.Freq2RadSeries(FourierSeries(f.c * u"eV"; period=f.t, offset=f.o, deriv=f.a)); gauge)
+    info = (; name=:wannier90, seed, gauge, bzkind, prec, config_wannier90...)
+    h_, bz_ = load_wannier90_data(seed; gauge, bz=bzkind, precision=prec, config_wannier90...)
+    f_ = AutoBZ.parentseries(h_)
+    f = AutoBZ.Freq2RadSeries(FourierSeries(f_.c * u"eV"; period=f_.t, offset=f_.o, deriv=f_.a))
+    h = h_ isa SOCHamiltonianInterp ? AutoBZ.SOCHamiltonianInterp(f, h_.λ; gauge) : HamiltonianInterp(f; gauge)
     bz = SymmetricBZ(bz_.A * u"Å", bz_.B / u"Å", bz_.lims, bz_.syms)
     return h, bz, info
 end
