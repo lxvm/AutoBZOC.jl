@@ -3,7 +3,7 @@ using AutoBZ
 using LinearAlgebra
 using Brillouin: interpolate
 using ColorSchemes, Colors
-
+using LaTeXStrings
 
 function fig3a(; alpha=1.0, alpha_ramp = range(0, 1, length=256), ylims=(0, 50),
     cache_file_interp_cond_k="cache-interp-cond-k.jld2", cache_file_interp_cond_ω="cache-interp-cond-ω.jld2",
@@ -11,21 +11,12 @@ function fig3a(; alpha=1.0, alpha_ramp = range(0, 1, length=256), ylims=(0, 50),
     kws...)
     (; scalar_func, scalar_text, kpath, N_k, N_ω, N_Ω, interp_k, interp_ω, interp_Ω, T, lims_Ω, lims_ω, unit_σ, factor_σ, nsp, ndim, prec, cache_dir, nthreads, auxfun, config_vcomp, atol_σ, rtol_σ, interp_tolratio) = merge(default, NamedTuple(kws))
 
-    fig = Figure(resolution=(800,1600))
+    fig = Figure(resolution=(800,1000))
 
     N_vcomp = sum(v -> v.plot_density, config_vcomp)
-    layout_cond = GridLayout(; parent=fig)
-    layout_structure = GridLayout(;
-        nrow=2*N_vcomp,
-        ncol=2,
-        parent=fig,
-    )
 
     β = invtemp(; kws..., T)
     μ, = findchempot(; kws..., T)
-
-    series_ω = range(prec.(lims_ω)..., length=N_ω)
-    unit_ω = unit(eltype(series_ω))
 
     kp = kpath(; kws...)
     kpi = interpolate(kp, N_k)
@@ -36,16 +27,25 @@ function fig3a(; alpha=1.0, alpha_ramp = range(0, 1, length=256), ylims=(0, 50),
     series_Ω = range(prec.(lims_Ω)..., length=N_Ω)
     unit_Ω = unit(eltype(series_Ω))
 
-    layout_cond[1,1] = ax = Axis(fig;
+    ax = Axis(fig[1,1];
         title="Orbital structure of optical conductivity",
-        xlabel="Ω ($(unit_Ω))",
+        xlabel=L"$\Omega$ %$(_unit_Lstr(unit_Ω))",
         xticks=unique!(Iterators.flatten((getproperty.(config_vcomp, :Ω), lims_Ω)) ./ unit_Ω),
-        ylabel="$(scalar_text) ($(unit_σ))",
+        ylabel=L"%$(scalar_text) %$(_unit_Lstr(unit_σ))",
         limits=(lims_Ω ./ unit_Ω, ylims),
+        ygridvisible=false,
+    )
+
+    alphabet = 'a':'z'
+    Legend(fig[1,2],
+        [LineElement(; color) for (; color) in config_vcomp],
+        [label for (;label) in config_vcomp],
+        string(alphabet[1]),
+        width = Relative(1),
     )
 
     i = 0
-    for (; vcomp, label, color, Ω, plot_trace, plot_density) in config_vcomp
+    for (; vcomp, label, color, densitycolormap, Ω, plot_trace, plot_density) in config_vcomp
         if plot_trace
             data_σ = if interp_Ω
                 σ, = conductivity_interp(; μ, T, kws..., vcomp)
@@ -57,42 +57,36 @@ function fig3a(; alpha=1.0, alpha_ramp = range(0, 1, length=256), ylims=(0, 50),
         end
         if plot_density
             i += 1
-            densitycolormap = Colors.alphacolor.(Makie.to_colormap(cgrad([color, color], 100)), alpha_ramp)
+            densitycolormap = !isnothing(densitycolormap) ? densitycolormap :
+                Colors.alphacolor.(Makie.to_colormap(cgrad([color, color], 100)), alpha_ramp)
+            lb_ω, = AutoBZ.fermi_window_limits(Ω, β; rtol=1e-2)
+            lims_ω = (lb_ω, -lb_ω)
+            series_ω = range(prec.(lims_ω)..., length=N_ω)
+            unit_ω = unit(eltype(series_ω))
 
-            layout_structure[2i,1] = ax_vcomp = Axis(fig,
-                xlabel="Spectral density of $(scalar_text)", ylabel="ω ($unit_ω)",
-                xticks=(kloc[collect(keys(kps.label))], map(string, values(kps.label))),
-                limits = (extrema(kloc), (1,N_ω))
-            )
+            ticks_k = (kloc[collect(keys(kps.label))], map(string, values(kps.label)))
+            ticks_ω = if iszero(Ω)
+                ([-4/β, zero(1/β), 4/β] .* unit(β), [L"-4/\beta", L"0", L"4/\beta"])
+            else
+                ([-Ω, zero(Ω), Ω] ./ unit_Ω, [L"-\Omega", L"0", L"\Omega"])
+            end
 
             Γ, = transport_solver(; μ, kws..., vcomp)
             σ = FourierIntegrand(Γ.f.w, Γ.f.f, prec(Ω)) do k, Γ, Ω, ω
                 scalar_func(fermi_window(β, ω, Ω)*Γ(k, (; ω₁=ω, ω₂=ω+Ω)))
             end
 
+            ax_vcomp = Axis(fig[2i+1,1];
+                xlabel=L"Spectral density of %$(scalar_text) at $\Omega$ = %$Ω, T = %$T",
+                ylabel=L"$\omega$ %$(_unit_Lstr(unit_ω))",
+                xticks=ticks_k,
+                yticks=ticks_ω,
+                limits = (extrema(kloc), lims_ω ./ unit_ω),
+            )
+
             kpathinterpplot!(ax_vcomp, kps, series_ω, σ; alpha, densitycolormap)
+            AutoBZ.shift!(σ.w.series, μ)
             kpathinterpplot!(ax_vcomp, kps, AutoBZ.parentseries(σ.w.series))
-
-            inset = inset_axis!(fig, ax_vcomp;
-                extent = (0.15, 0.45, 0.45, 0.75),
-                limits = ((1.0,2.5), (-0.05, 0.05)),
-                xticklabelsvisible=false,
-                xticksvisible=false,
-                xgridvisible=false,
-                ygridvisible=false,
-            )
-
-            kpathinterpplot!(inset, kps, series_ω, σ; alpha, densitycolormap)
-            kpathinterpplot!(inset, kps, AutoBZ.parentseries(σ.w.series))
-
-            layout_structure[2i-1,1] = ax_vcomp_k = Axis(fig;
-                ylabel="∫ $(scalar_text)(k,ω) dω",
-                limits=(extrema(kloc), nothing),
-                ygridvisible=false,
-                yticks=[0.0],
-            )
-            linkxaxes!(ax_vcomp_k, ax_vcomp)
-            hidexdecorations!(ax_vcomp_k, ticks = false, grid = false)
 
             prec_v = x -> map(prec, x)
             data_σ_k = if interp_k
@@ -112,16 +106,18 @@ function fig3a(; alpha=1.0, alpha_ramp = range(0, 1, length=256), ylims=(0, 50),
                 # would need a nested integrand type to accomplish that
                 cache_batchsolve(σ_k.f.f.f.solver, p_k, cache_path, id_k, nthreads)
             end .|> scalar_func
+
+            ax_vcomp_k = Axis(fig[2i,1];
+                ylabel=L"$\int$ %$(scalar_text) $\mathrm{d} \omega$",
+                limits=(extrema(kloc), nothing),
+                xticks=ticks_k[1],
+                yticklabelsvisible=false,
+            )
+            linkxaxes!(ax_vcomp_k, ax_vcomp)
+            hidexdecorations!(ax_vcomp_k, ticks = false, grid = false)
+
             lines!(ax_vcomp_k, kloc, data_σ_k ./ maximum(data_σ_k); color)
 
-
-            layout_structure[2i,2] = ax_vcomp_ω = Axis(fig;
-                xlabel="∫ $(scalar_text)(k,ω) dk",
-                xgridvisible=false,
-                xticks=[0.0],
-            )
-            linkyaxes!(ax_vcomp_ω, ax_vcomp)
-            hideydecorations!(ax_vcomp_ω, ticks = false, grid = false)
 
             a, b = AutoBZ.fermi_window_limits(Ω, β)
             atol_σ_ω = atol_σ/(b-a)
@@ -144,32 +140,39 @@ function fig3a(; alpha=1.0, alpha_ramp = range(0, 1, length=256), ylims=(0, 50),
                 cache_batchsolve(Γ, p_ω, cache_path, id_ω, nthreads) .* fermi_window.(β, series_ω, prec(Ω))
             end .|> scalar_func
 
+
+            ax_vcomp_ω = Axis(fig[2i+1,2];
+                xlabel=L"$\int$ %$(scalar_text) $\mathrm{dk}$",
+                xticklabelsvisible=false,
+                yticks=ticks_ω[1],
+                limits = (nothing, lims_ω ./ unit_ω),
+            )
+            linkyaxes!(ax_vcomp_ω, ax_vcomp)
+            hideydecorations!(ax_vcomp_ω, ticks = false, grid = false)
             lines!(ax_vcomp_ω, data_σ_ω ./ maximum(data_σ_ω), series_ω ./ unit_ω; color)
 
-            Legend(layout_structure[2i-1,2],
-                [LineElement(; color=:black), LineElement(; color)],
-                ["spectrum", label],
+            Legend(fig[2i,2],
+                [LineElement(; color), LineElement(; color=:black)],
+                [label, "spectrum"],
+                string(alphabet[i+1]),
+                width = Relative(1),
+                height = Relative(1),
             )
 
         end
     end
 
-    axislegend(ax)
+    colsize!(fig.layout, 1, Relative(4/5))
+    colsize!(fig.layout, 2, Relative(1/5))
 
-    colsize!(layout_structure, 1, Relative(4/5))
-    colsize!(layout_structure, 2, Relative(1/5))
+    rowsize!(fig.layout, 1, Relative(1/3))
     i = 0
     for (; plot_density) in config_vcomp
         plot_density || continue
         i += 1
-        rowsize!(layout_structure, 2i-1, Relative(1/5/N_vcomp))
-        rowsize!(layout_structure, 2i,   Relative(4/5/N_vcomp))
+        rowsize!(fig.layout, 2i,    Relative(2/5/N_vcomp*2/3))
+        rowsize!(fig.layout, 2i+1,  Relative(3/5/N_vcomp*2/3))
     end
-
-    fig.layout[1,1] = layout_cond
-    fig.layout[2,1] = layout_structure
-    rowsize!(fig.layout, 1, Relative(2/9))
-    rowsize!(fig.layout, 2, Relative(7/9))
 
     return fig
 end

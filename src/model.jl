@@ -4,6 +4,54 @@ using Permutations
 using LinearAlgebra
 using AutoBZ
 using Brillouin
+using Random
+
+function integerlattice_model(; kws...)
+    (; t, ndim, gauge, prec, bzkind) = merge(default, NamedTuple(kws))
+    C = OffsetArray(zeros(SMatrix{1,1,typeof(prec(t)),1},ntuple(_ -> 3, ndim)), repeat([-1:1], ndim)...)
+    for i in 1:ndim, j in (-1, 1)
+        C[CartesianIndex(ntuple(k -> k ≈ i ? j : 0, ndim))] = [t;;]
+    end
+
+    info = (; name="integerlattice", t, ndim, gauge, prec)
+    d = ndim
+    A = one(SMatrix{d,d,prec,d^2})
+    bz = if bzkind isa IBZ
+        @assert ndim == 3
+        atom_species = ["Sr"]
+        atom_pos = zeros(ndim)
+        load_bz(bzkind, bz.A, bz.B, atom_species, atom_pos')
+        # TODO change units of A, B
+    else
+        load_bz(bzkind, SMatrix(A) * u"Å")
+    end
+    return HamiltonianInterp(AutoBZ.Freq2RadSeries(FourierSeries(C, period=prec(real(2one(t)*pi)))); gauge), bz, info
+end
+
+function random_model(; seed, nband, nmode, kws...)
+    (; t, ndim, gauge, prec, bzkind) = merge(default, NamedTuple(kws))
+    ndim == 1 || error("multidimesional not implemented")
+    Random.seed!(seed)
+    d = ndim
+    M = nmode
+    T = SMatrix{nband,nband,typeof(prec(t)),nband^2}
+    info = (; name="random", t, seed, nband, nmode, prec, bzkind)
+    hm = Vector{T}(undef, 2M+1)
+    # Hermitian means H_R = H_{-R}^\dagger
+    for i in 0:M
+        el = rand(T)*exp(-abs(i)) # exponentially decaying coefficients
+        if i == 0
+            hm[M+1] = el + el'
+        else
+            hm[M+1+i] = el
+            hm[M+1-i] = el'
+        end
+    end
+    bzkind isa FBZ || @warn "random Fourier series has no symmetries. For correctness use bzkind=FBZ()"
+    A = one(SMatrix{d,d,prec,d^2})
+    bz = load_bz(bzkind, SMatrix(A) * u"Å")
+    return HamiltonianInterp(AutoBZ.Freq2RadSeries(FourierSeries(hm, period=prec(real(2one(t)*pi)), offset=-M-1)); gauge), bz, info
+end
 
 
 function ogmodel(; kws...)
@@ -128,13 +176,13 @@ function fermiliquid_selfenergy(; T, kws...)
     return ConstScalarSelfEnergy(-im*η, map(prec, lims_Σ)...), info
 end
 
-function autobz_selfenergy(; file_selfenergy, config_selfenergy=(;), kws...)
+function autobz_selfenergy(; file_selfenergy, offset_scattering, config_selfenergy=(;), kws...)
     (; prec, lims_Σ) = merge(default, NamedTuple(kws))
     Σ = load_self_energy(file_selfenergy; precision=prec, config_selfenergy...)
     lims_Σ = (prec(max(Σ.lb*u"eV", lims_Σ[1])), prec(min(Σ.ub*u"eV", lims_Σ[2])))
-    info = (; name=:autobz, file=file_selfenergy, precision=prec, lims_Σ, config_selfenergy...)
+    info = (; name=:autobz, file=file_selfenergy, precision=prec, lims_Σ, offset_scattering, config_selfenergy...)
     return MatrixSelfEnergy(lims_Σ...) do ω
-        Σ(prec(ω/u"eV"))*u"eV"
+        Σ(prec(ω/u"eV"))*(one(prec)*u"eV") - (prec(offset_scattering)*im)*I
     end, info
 end
 
@@ -177,11 +225,16 @@ function cubic_path(; kws...)
         :X => [0.0, 0.5, 0.0],
     )
     paths = [
-        [:Γ, :R, :X, :M, :Γ],
+        [:R, :Γ, :X, :M, :Γ],
     ]
     basis = Brillouin.KPaths.reciprocalbasis(collect(eachcol(bz.B'bz.A)))
     setting = Ref(Brillouin.LATTICE)
     return KPath(pts, paths, basis, setting)
+end
+
+function custom_path(; pts, paths, A, setting, kws...)
+    basis = Brillouin.KPaths.reciprocalbasis(collect(eachcol(A)))
+    return KPath(pts, paths, basis, Ref(setting))
 end
 
 function sgnum_path(; sgnum, kws...)

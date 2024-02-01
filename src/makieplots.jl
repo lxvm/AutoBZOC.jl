@@ -20,7 +20,8 @@ struct KPathSegment{B,K,L,S}
 end
 
 function Makie.convert_arguments(::Type{<:KPathInterpPlot}, kps::KPathSegment, h::AbstractHamiltonianInterp)
-    B = reduce(hcat, kps.basis)
+    kps.basis
+    B = reduce(hcat, collect(kps.basis.vs))
     kloc = cumdists([kps.setting == Brillouin.CARTESIAN ? k : B*k for k in kps.kpath])
     data = stack([gauge(h) isa Hamiltonian ? h(k).values : AutoBZ.to_gauge(Hamiltonian(), h(k)).values for k in kps.kpath])
     return (kloc, data/oneunit(eltype(data)))

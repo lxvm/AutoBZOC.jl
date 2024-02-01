@@ -4,13 +4,27 @@ using LinearAlgebra
 using SimpleNonlinearSolve
 using AutoBZ
 using Unitful, UnitfulAtomic
+using GLMakie
+using LaTeXStrings
 
 export make
 
 include("model.jl")
 
+getval(x) = x
+getval(x::AuxValue) = x.val
+
 getaux(x) = x
 getaux(x::AuxValue) = x.aux
+
+_unit_Lstr(u) = latexstring(
+    "\\left(\\,",
+    replace(string(u),
+        r"\h+" => s" \\:",
+        r"(\w+)\^(-?\d+)" => s"\\mathrm{\1}^{\2}",
+        r"(\w+)" => s"\\mathrm{\1}",
+    ),
+    "\\,\\right)")
 
 """
     default
@@ -28,9 +42,9 @@ Multithreading can be enabled with `nworkers` and `batchthreads`.
     arithmetic, however in single precision they may not converge without increasing rtol or
     setting a finite atol.
 """
-const default = (;
+default = (;
     scalar_func = getaux∘real∘tr,
-    scalar_text = "Tr σ",
+    scalar_text = L"\mathrm{Tr}~\sigma",
     bzkind = CubicSymIBZ(),
     kpath = cubic_path,
     model = t2g_model,
@@ -84,22 +98,45 @@ const default = (;
     series_T = u"K" * [256.0, 181.0, 128.0, 90.5, 64.0],
     series_Δ = u"eV" * range(-1, 1, length=21),
     config_vcomp = (
-        (vcomp=Whole(), label="whole",      color=:black,   Ω=0.0u"eV", plot_trace=true,    plot_density=false, plot_ibz=false),
-        (vcomp=Intra(), label="intra-band", color=:orange,  Ω=0.0u"eV", plot_trace=true,    plot_density=true,  plot_ibz=false),
-        (vcomp=Inter(), label="inter-band", color=:green,   Ω=0.4u"eV", plot_trace=true,    plot_density=true,  plot_ibz=true),
+        (vcomp=Whole(), label="whole",      color=:black,   densitycolormap=nothing,Ω=0.0u"eV", plot_trace=true,    plot_density=false, plot_ibz=false),
+        (vcomp=Intra(), label="intra-band", color=:orange,  densitycolormap=Makie.Reverse(:RdBu),  Ω=0.0u"eV", plot_trace=true,    plot_density=true,  plot_ibz=false),
+        (vcomp=Inter(), label="inter-band", color=:green,   densitycolormap=Makie.Reverse(:BrBg),  Ω=0.4u"eV", plot_trace=true,    plot_density=true,  plot_ibz=true),
     ),
-    config_quad_breakeven = (
-        IAI(AuxQuadGKJL(order=4)),
-        IAI(AuxQuadGKJL(order=5)),
-        # IAI(AuxQuadGKJL(order=6)),
-        # IAI(AuxQuadGKJL(order=7)),
-        # IAI(AuxQuadGKJL(order=8)),
-        # AutoPTR(nmin=1, nmax=typemax(Int)),
+    config_quad_breakeven = (;
+        algs = (
+            IAI(AuxQuadGKJL(order=4)),
+            IAI(AuxQuadGKJL(order=5)),
+            # IAI(AuxQuadGKJL(order=6)),
+            # IAI(AuxQuadGKJL(order=7)),
+            # IAI(AuxQuadGKJL(order=8)),
+            AutoPTR(nmin=1, nmax=typemax(Int)),
+        ),
+        series = (
+            # (; fun = a -> 1/a,      label = "1/η",      factor_t=1e-7, factor_numevals=1e1),
+            # (; fun = a -> log(1/a), label = "log(1/η)", factor_t=1e-5, factor_numevals=1e2),
+            # (; fun = a -> 1/a^2,      label = "1/η²",      factor_t=1e-7, factor_numevals=1e1),
+            # (; fun = a -> log(1/a)^2, label = "log(1/η)²", factor_t=1e-4, factor_numevals=1e4),
+            (; fun = a -> 1/a^3,      label = "1/η³",      factor_t=1e-7, factor_numevals=1e1),
+            (; fun = a -> log(1/a)^3, label = "log(1/η)³", factor_t=1e-2, factor_numevals=1e5),
+        )
     ),
     nsample = 3,
     nworkers = 1,
     nthreads = 1,
     cache_dir = ".",
+    theme = merge(
+        theme_latexfonts(),
+        Theme(;
+            Axis = (;
+                xgridvisible=false,
+                xtickalign = 1,
+                ygridvisible=false,
+                ytickalign = 1,
+                yticklabelrotation=pi/2,
+            ),
+            fontsize = 16,
+        ),
+    ),
 )
 
 # the model of the material determines the Hamiltonian and self energy
@@ -120,6 +157,7 @@ include("transport.jl")
 include("conductivity.jl")
 
 include("makieplots.jl")
+include("fig_bands.jl")
 include("fig3.jl")
 include("fig3a.jl")
 include("fig_breakeven.jl")

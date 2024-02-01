@@ -4,6 +4,11 @@ function do_make(; figure_path=joinpath(pwd(), "figs"), target=:all, io=stderr, 
     with_logger(SimpleLogger(io, min_level)) do
         mkpath(figure_path)
 
+        if target == :bands || target == :all
+            fb = fig_bands(; kws...)
+            save(joinpath(figure_path, "bands.png"), fb)
+        end
+
         if target == :dos || target == :all
             fg = fig_breakeven_trgloc(; kws...)
             save(joinpath(figure_path, "crossover_dos.png"), fg)
@@ -44,10 +49,15 @@ function do_make(; figure_path=joinpath(pwd(), "figs"), target=:all, io=stderr, 
 end
 
 # multithreading by default
-make(; kws...) = do_make(;
-    nthreads=Threads.nthreads(),
-    kws...,
-)
+function make(; kws...)
+    (; theme) = merge(default, NamedTuple(kws))
+    with_theme(theme) do
+        do_make(;
+            nthreads=Threads.nthreads(),
+            kws...,
+        )
+    end
+end
 
 # make for auxiliary functions
 make_aux(; kws...) = make(;

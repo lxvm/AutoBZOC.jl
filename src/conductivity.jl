@@ -82,7 +82,7 @@ function benchmark_conductivity(; Ω, cache_file_bench_cond="cache-bench-cond.jl
     id = string(info)
     cache_path = joinpath(cache_dir, cache_file_bench_cond)
 
-    @info "Conductivity evaluation" info...
+    @info "Conductivity benchmark" info...
     data = cache_benchmark(σ, (), (; Ω=prec(Ω)), cache_path, id; kws...)
     return data, info
 end
