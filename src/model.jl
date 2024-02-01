@@ -181,8 +181,11 @@ function autobz_selfenergy(; file_selfenergy, offset_scattering, config_selfener
     Σ = load_self_energy(file_selfenergy; precision=prec, config_selfenergy...)
     lims_Σ = (prec(max(Σ.lb*u"eV", lims_Σ[1])), prec(min(Σ.ub*u"eV", lims_Σ[2])))
     info = (; name=:autobz, file=file_selfenergy, precision=prec, lims_Σ, offset_scattering, config_selfenergy...)
+    η = prec(offset_scattering)*im
+    u_ω = one(prec)*u"eV"
+    iu_ω = 1/u_ω
     return MatrixSelfEnergy(lims_Σ...) do ω
-        Σ(prec(ω/u"eV"))*(one(prec)*u"eV") - (prec(offset_scattering)*im)*I
+        Σ(ω*iu_ω)*u_ω - η*I
     end, info
 end
 
