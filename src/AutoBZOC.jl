@@ -43,7 +43,7 @@ Multithreading can be enabled with `nworkers` and `batchthreads`.
     setting a finite atol.
 """
 default = (;
-    scalar_func = getaux∘real∘tr,
+    scalar_func = tr∘real∘getaux,
     scalar_text = L"\mathrm{Tr}~\sigma",
     bzkind = CubicSymIBZ(),
     kpath = cubic_path,
@@ -100,7 +100,7 @@ default = (;
     config_vcomp = (
         (vcomp=Whole(), label="whole",      color=:black,   densitycolormap=nothing,Ω=0.0u"eV", plot_trace=true,    plot_density=false, plot_ibz=false),
         (vcomp=Intra(), label="intra-band", color=:orange,  densitycolormap=Makie.Reverse(:RdBu),  Ω=0.0u"eV", plot_trace=true,    plot_density=true,  plot_ibz=false),
-        (vcomp=Inter(), label="inter-band", color=:green,   densitycolormap=Makie.Reverse(:BrBg),  Ω=0.4u"eV", plot_trace=true,    plot_density=true,  plot_ibz=true),
+        (vcomp=Inter(), label="inter-band", color=:green,   densitycolormap=Makie.Reverse(:RdBu),  Ω=0.4u"eV", plot_trace=true,    plot_density=true,  plot_ibz=true),
     ),
     config_quad_breakeven = (;
         algs = (
@@ -155,6 +155,9 @@ include("trgloc.jl")
 include("density.jl")
 include("transport.jl")
 include("conductivity.jl")
+include("conductivity_test.jl")
+include("conductivity_only.jl")
+include("guess_dc_scaling.jl")
 
 include("makieplots.jl")
 include("fig_bands.jl")
@@ -164,6 +167,7 @@ include("fig_breakeven.jl")
 include("fig_cfs.jl")
 include("fig_ibz.jl")
 include("fig_dos.jl")
+include("fig_err.jl")
 include("make.jl")
 
 end # module AutoBZOC

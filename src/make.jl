@@ -40,10 +40,29 @@ function do_make(; figure_path=joinpath(pwd(), "figs"), target=:all, io=stderr, 
         end
 
         if target == :ibz || target == :all
-            fc = fig_ibz(; kws...)
-            save(joinpath(figure_path, "ibz.png"), fc)
+            fi = fig_ibz(; kws...)
+            save(joinpath(figure_path, "ibz.png"), fi)
         end
 
+        if target == :auxerr || target == :all
+            fe = fig_err(; kws...)
+            save(joinpath(figure_path, "auxerr.png"), fe)
+        end
+
+        if target == :doserr || target == :all
+            fed = fig_err_dos(; kws...)
+            save(joinpath(figure_path, "doserr.png"), fed)
+        end
+
+        if target == :testerr || target == :all
+            fet = fig_err_test(; kws...)
+            save(joinpath(figure_path, "testerr.png"), fet)
+        end
+
+        if target == :onlyerr || target == :all
+            feo = fig_err_only(; kws...)
+            save(joinpath(figure_path, "onlyerr.png"), feo)
+        end
     end
     return
 end
@@ -51,12 +70,11 @@ end
 # multithreading by default
 function make(; kws...)
     (; theme) = merge(default, NamedTuple(kws))
-    with_theme(theme) do
-        do_make(;
-            nthreads=Threads.nthreads(),
-            kws...,
-        )
-    end
+    set_theme!(theme)
+    do_make(;
+        nthreads=Threads.nthreads(),
+        kws...,
+    )
 end
 
 # make for auxiliary functions

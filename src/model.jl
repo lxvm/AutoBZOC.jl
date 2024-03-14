@@ -28,25 +28,17 @@ function integerlattice_model(; kws...)
     return HamiltonianInterp(AutoBZ.Freq2RadSeries(FourierSeries(C, period=prec(real(2one(t)*pi)))); gauge), bz, info
 end
 
-function random_model(; seed, nband, nmode, kws...)
-    (; t, ndim, gauge, prec, bzkind) = merge(default, NamedTuple(kws))
-    ndim == 1 || error("multidimesional not implemented")
+function random_model(; seed, nband, nmode, bzkind=FBZ(), kws...)
+    (; t, ndim, gauge, prec) = merge(default, NamedTuple(kws))
     Random.seed!(seed)
     d = ndim
     M = nmode
     T = SMatrix{nband,nband,typeof(prec(t)),nband^2}
-    info = (; name="random", t, seed, nband, nmode, prec, bzkind)
+    info = (; name="random", t, seed, nband, ndim, nmode, prec, bzkind)
     hm = Vector{T}(undef, 2M+1)
-    # Hermitian means H_R = H_{-R}^\dagger
-    for i in 0:M
-        el = rand(T)*exp(-abs(i)) # exponentially decaying coefficients
-        if i == 0
-            hm[M+1] = el + el'
-        else
-            hm[M+1+i] = el
-            hm[M+1-i] = el'
-        end
-    end
+    hm_ = rand(T, ntuple(_->2M+1,ndim)...)
+    o = CartesianIndex(ntuple(_->M+1, ndim)...)
+    hm = [exp(-hypot(i...))*(hm_[CartesianIndex(i) + o] + hm_[-CartesianIndex(i) + o]') for i in Iterators.product(ntuple(_->-M:M,ndim)...)]
     bzkind isa FBZ || @warn "random Fourier series has no symmetries. For correctness use bzkind=FBZ()"
     A = one(SMatrix{d,d,prec,d^2})
     bz = load_bz(bzkind, SMatrix(A) * u"Å")
@@ -181,11 +173,11 @@ function autobz_selfenergy(; file_selfenergy, offset_scattering, config_selfener
     Σ = load_self_energy(file_selfenergy; precision=prec, config_selfenergy...)
     lims_Σ = (prec(max(Σ.lb*u"eV", lims_Σ[1])), prec(min(Σ.ub*u"eV", lims_Σ[2])))
     info = (; name=:autobz, file=file_selfenergy, precision=prec, lims_Σ, offset_scattering, config_selfenergy...)
-    η = prec(offset_scattering)*im
+    imη = prec(offset_scattering)*im
     u_ω = one(prec)*u"eV"
     iu_ω = 1/u_ω
     return MatrixSelfEnergy(lims_Σ...) do ω
-        Σ(ω*iu_ω)*u_ω - η*I
+        Σ(ω*iu_ω)*u_ω - imη*I
     end, info
 end
 

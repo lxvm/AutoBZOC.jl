@@ -38,7 +38,7 @@ end
 
 function Makie.convert_arguments(::Type{<:KPathInterpPlot}, kps::KPathSegment, hv::AbstractVelocityInterp)
     @assert coord(hv) isa Cartesian
-    B = reduce(hcat, kps.basis)
+    B = reduce(hcat, collect(kps.basis.vs))
     kcart = [kps.setting == Brillouin.CARTESIAN ? k : B*k for k in kps.kpath]
     kloc = cumdists(kcart)
     data = [gauge(hv) isa Hamiltonian ? hv(k) : ((hk, vk) = hv(k); (hkh, vkh) = AutoBZ.to_gauge(Hamiltonian(), hk, vk.data); (hkh, SVector(vkh))) for k in kps.kpath]
@@ -69,7 +69,7 @@ function Makie.plot!(kpp::KPathInterpPlot{<:Tuple{AbstractVector{<:Real},Abstrac
 end
 
 function Makie.convert_arguments(::Type{<:KPathInterpPlot}, kps::KPathSegment, freq::AbstractVector{<:Number}, density::FourierIntegrand)
-    B = reduce(hcat, kps.basis)
+    B = reduce(hcat, collect(kps.basis.vs))
     kloc = cumdists([kps.setting == Brillouin.CARTESIAN ? k : B*k for k in kps.kpath])
     data = [density(FourierValue(k, density.w(k)), f) for k in kps.kpath, f in freq]
     return (kloc, freq/oneunit(eltype(freq)), data/maximum(data))
@@ -89,7 +89,7 @@ function bandplot!(fig, kpi::KPathInterpolant, args...; kws...)
     len = 0.0
     reuse = (fig.layout.size[1] == 1) && (fig.layout.size[2] >= length(kpi.kpaths)) && !isempty(fig.layout.content) # plot into existing axes
     dat = map(enumerate(zip(kpi.kpaths, kpi.labels))) do (i, (kpath, label))
-        B = reduce(hcat, kpi.basis)
+        B = reduce(hcat, collect(kps.basis.vs))
         local_xs = cumdists([kpi.setting == Brillouin.CARTESIAN ? k : B*k for k in kpath])
         len += local_xs[end]-local_xs[begin]
         kps = KPathSegment(kpi.basis, kpath, label, kpi.setting)
@@ -105,7 +105,7 @@ function bandplot!(fig, kpi::KPathInterpolant, args...; kws...)
         kpathinterpplot!(ax, kps, args...; kws...)
     end
     for (i,(_, kps)) in enumerate(dat)
-        B = reduce(hcat, kpi.basis)
+        B = reduce(hcat, collect(kps.basis.vs))
         local_xs = cumdists([kpi.setting == Brillouin.CARTESIAN ? k : B*k for k in kps.kpath])
 
         colsize!(fig.layout, i, Relative((local_xs[end]-local_xs[begin])/len))

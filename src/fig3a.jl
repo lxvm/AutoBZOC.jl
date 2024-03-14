@@ -53,7 +53,8 @@ function fig3a(; alpha=1.0, alpha_ramp = range(0, 1, length=256), ylims=(0, 50),
             else
                 conductivity_batchsolve(; μ, T, kws..., vcomp, series_Ω)[1]
             end .|> scalar_func
-            lines!(ax, series_Ω ./ unit_Ω, upreferred.((nsp*factor_σ/(2pi)^ndim/unit_σ) .* data_σ); color, label)
+        
+            lines!(ax, series_Ω ./ unit_Ω, @show(upreferred.((nsp*factor_σ/(2pi)^ndim/unit_σ) .* data_σ)); color, label)
         end
         if plot_density
             i += 1
