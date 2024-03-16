@@ -181,6 +181,12 @@ function autobz_selfenergy(; file_selfenergy, offset_scattering, config_selfener
     end, info
 end
 
+function eta_selfenergy(; η, kws...)
+    (; prec, lims_Σ) = merge(default, NamedTuple(kws))
+    info = (; name=:eta, lims_Σ, prec, η)
+    return ConstScalarSelfEnergy(-im*prec(η), map(prec, lims_Σ)...), info
+end
+
 # make T a required keyword so that the caller has to set it explicitly
 function invtemp(; T, kws...)
     (; t, prec) = merge(default, NamedTuple(kws))
@@ -259,4 +265,11 @@ function cfs_path(; kws...)
     basis = Brillouin.KPaths.reciprocalbasis(A)
     setting = Ref(Brillouin.LATTICE)
     return KPath(pts, paths, basis, setting)
+end
+
+function chempot_manual(; μ, kws...)
+    (; model, prec) = merge(default, NamedTuple(kws))
+    h, bz, info_model = model(; kws...)
+    info = (; model=info_model, prec, μ)
+    return prec(μ), det(bz.B), info
 end

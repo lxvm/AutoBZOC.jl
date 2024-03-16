@@ -20,14 +20,15 @@ function do_fig_breakeven(bench_func, xlabel, ylabels...; config_quad_breakeven,
             lines!(ax, x, fun.(x) .* factor ; plot_kws...)
         end
     end
-    map(ax -> axislegend(ax; position=:lb), axs)
+    alphabet = 'a':'z'
+    map(((i, ax),) -> Legend(fig[i,1], ax, string(alphabet[i]); tellheight=false, tellwidth=false, halign=:left, valign=:bottom, margin=(10,10,10,10)), enumerate(axs))
 
     return fig
 end
 
 function fig_breakeven(; getpart=getval, kws...)
     (; selfenergy) = merge(default, NamedTuple(kws))
-    do_fig_breakeven("η (eV)", "Wall clock time (s)", "# integrand evaluations"; kws...) do config_bench, series_T, series_atol_σ
+    do_fig_breakeven(L"$\eta$ (eV)", "Wall clock time (s)", "# integrand evaluations"; kws...) do config_bench, series_T, series_atol_σ
         x = Float64[]
         tdat = Float64[]
         ndat = Int[]
