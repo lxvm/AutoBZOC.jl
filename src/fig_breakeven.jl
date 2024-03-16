@@ -41,7 +41,8 @@ function fig_breakeven(; getpart=getval, kws...)
             stats, = benchmark_conductivity(; kws..., config_bench..., atol_σ, T, μ)
             # @show norm(getval(stats.min.value))
             push!(tdat, stats.min.time)
-            push!(ndat, stats.min.numevals)
+            push!(ndat, stats.min.value.numevals)
+            haskey(stats.min.value, :npt) && @show stats.min.value.npt
             # push!(vdat, norm(getpart(first(stats.samples).value)))
         end
         return x, tdat, ndat#, vdat

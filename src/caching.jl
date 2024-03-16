@@ -17,15 +17,15 @@ function cache_call(f, args, kws, cache_path, key; call="f", use_cache=true, _..
     end
 end
 
-function cache_hchebinterp(batchf, a, b, atol, rtol, cache_path, key; call="hchebinterp", kws...)
+function cache_hchebinterp(batchf, a, b, atol, rtol, initdiv, cache_path, key; call="hchebinterp", max_batch=1, kws...)
     cnt::Int = 0
-    f = BatchFunction() do x
+    f = BatchFunction(; max_batch) do x
         cnt += nbatch = length(x)
         dat = @timed batchf(x)
         @debug "$call batch" batch_elapsed=dat.time batch_samples=nbatch
         dat.value
     end
-    stats = cache_call(hchebinterp, (f, a, b), (; atol, rtol), cache_path, key; call, kws...)
+    stats = cache_call(hchebinterp, (f, a, b), (; atol, rtol, initdiv), cache_path, key; call, kws...)
     cnt > 0 && @debug "$call summary" elapsed=stats.time samples=cnt
     return stats.value
 end
@@ -57,9 +57,7 @@ function cache_benchmark(f, args...; call="benchmark", nsample=3, kws...)
     bench_f = function (args...; kws...)
         called = true
         samples = map(1:nsample) do n
-            gcnt[] = 0
-            stats = @timed f(args...; kws...)
-            merge(stats, (; numevals=gcnt[]))
+            @timed f(args...; kws...)
         end
         (; samples,
         min = samples[findmin(s -> s.time, samples)[2]],

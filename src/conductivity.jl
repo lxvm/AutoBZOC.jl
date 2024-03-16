@@ -36,7 +36,7 @@ function conductivity_solver(; μ, bandwidth_bound, aux_inner_only=false, kws...
     return σ, info
 end
 
-function conductivity_interp(; cache_file_interp_cond="cache-interp-cond.jld2", kws...)
+function conductivity_interp(; cache_file_interp_cond="cache-interp-cond.jld2", initdiv=1, kws...)
     (; lims_Ω, atol_σ, rtol_σ, interp_tolratio, prec, cache_dir, nthreads) = merge(default, NamedTuple(kws))
 
     σ, info_solver = conductivity_solver(; kws..., bandwidth_bound=maximum(lims_Ω), atol_σ=atol_σ/interp_tolratio, rtol_σ=rtol_σ/interp_tolratio)
@@ -46,10 +46,10 @@ function conductivity_interp(; cache_file_interp_cond="cache-interp-cond.jld2", 
     lb, ub = map(prec, lims_Ω)
     cache_path = joinpath(cache_dir, cache_file_interp_cond)
     @info "Conductivity interpolation" info...
-    σ_interp = cache_hchebinterp(lb, ub, atol_σ, rtol_σ, cache_path, id) do Ω
+    σ_interp = cache_hchebinterp(lb, ub, atol_σ, rtol_σ, initdiv, cache_path, id) do Ω
         batchsolve(σ, paramzip(; Ω); nthreads=nthreads)
     end
-    return ((; Ω) -> σ_interp(Ω)), info
+    return ((; Ω) -> σ_interp(Ω)), info, σ_interp
 end
 
 function conductivity_batchsolve(; series_Ω, cache_file_values_cond="cache-values-cond.jld2", kws...)
@@ -85,6 +85,22 @@ function benchmark_conductivity(; Ω, cache_file_bench_cond="cache-bench-cond.jl
     cache_path = joinpath(cache_dir, cache_file_bench_cond)
 
     @info "Conductivity benchmark" info...
-    data = cache_benchmark(σ, (), (; Ω=prec(Ω)), cache_path, id; kws...)
+    _σ = (args...; kws...) -> begin
+        gcnt[] = 0
+        sol = σ(args...; kws...)
+        # @show σ.alg
+        # @show propertynames(σ.f.p[4].cache[1].rule)
+        if !(σ.alg isa AutoBZCore.AutoBZAlgorithm) && σ.f.p[4].alg isa AutoPTR
+            (; sol, numevals=gcnt[], npt=getnpt.(σ.f.p[4].cache))
+        else
+            (; sol, numevals=gcnt[])
+        end
+    end
+    data = cache_benchmark(_σ, (), (; Ω=prec(Ω)), cache_path, id; kws...)
     return data, info
 end
+
+getnpt(r::AutoBZCore.FourierMonkhorstPack) = r.npt
+getnpt(r::AutoBZCore.AutoSymPTR.PTR) = length(r.x)
+getnpt(r::AutoBZCore.FourierPTR) = getnpt(r.p)
+getnpt(r::AutoBZCore.SymmetricRule) = getnpt(r.rule)

@@ -15,10 +15,14 @@ function fig3(; colormap=:thermal, lims_y=(0,100), kws...)
     Tmax = maximum(series_T)
     unit_T = unit(Tmax)
     colors = cgrad(colormap)
+    interp_Ω || error("not implemented")
+    T1 = maximum(series_T)
+    μ1, = findchempot(; kws..., T=T1)
+    _, _, initdiv = conductivity_interp(; kws..., T=T1, μ=μ1) # unroll first calc
     for T in reverse(sort(collect(series_T)))
         μ, = findchempot(; kws..., T)
         data_σ = if interp_Ω
-            σ, = conductivity_interp(; kws..., T, μ)
+            σ, _, initdiv = conductivity_interp(; kws..., T, μ, initdiv)
             map(Ω -> σ(; Ω), series_Ω)
         else
             error("not implemented")

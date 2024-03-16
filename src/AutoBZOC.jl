@@ -48,7 +48,6 @@ default = (;
     bzkind = CubicSymIBZ(),
     kpath = cubic_path,
     model = t2g_model,
-    chempot = findchempot,
     t = -0.25u"eV",
     t′ = 0.05u"eV",
     Δ = 0.0u"eV",
