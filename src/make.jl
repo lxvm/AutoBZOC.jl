@@ -34,6 +34,12 @@ function do_make(; figure_path=joinpath(pwd(), "figs"), target=:all, io=stderr, 
             save(joinpath(figure_path, "crossover.png"), fb)
         end
 
+
+        if target == :nptrtable || target == :all
+            dat = nptrtable(; kws...)
+            # writedlm(joinpath(figure_path, "nptrtable.txt"), dat)
+        end
+
         if target == :cfs || target == :all
             fc = fig_cfs(; kws...)
             save(joinpath(figure_path, "cfs.png"), fc)

@@ -158,6 +158,7 @@ include("conductivity.jl")
 include("conductivity_test.jl")
 include("conductivity_only.jl")
 include("guess_dc_scaling.jl")
+include("nptrtable.jl")
 
 include("makieplots.jl")
 include("fig_bands.jl")
