@@ -46,7 +46,7 @@ function conductivity_interp(; cache_file_interp_cond="cache-interp-cond.jld2", 
     lb, ub = map(prec, lims_Ω)
     cache_path = joinpath(cache_dir, cache_file_interp_cond)
     @info "Conductivity interpolation" info...
-    σ_interp = cache_hchebinterp(lb, ub, atol_σ, rtol_σ, initdiv, cache_path, id) do Ω
+    σ_interp = cache_hchebinterp(lb, ub, atol_σ, rtol_σ, initdiv, cache_path, id; kws...) do Ω
         batchsolve(σ, paramzip(; Ω); nthreads=nthreads)
     end
     return ((; Ω) -> σ_interp(Ω)), info, σ_interp
