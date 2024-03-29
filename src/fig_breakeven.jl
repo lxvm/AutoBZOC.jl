@@ -39,7 +39,7 @@ function fig_breakeven(; getpart=getval, kws...)
             push!(x, AutoBZ.sigma_to_eta(Σ(0.0u"eV"))/u"eV")
             μ, = findchempot(; kws..., T)
             stats, = benchmark_conductivity(; kws..., config_bench..., atol_σ, T, μ)
-            # @show norm(getval(stats.min.value))
+            @show norm(getval(stats.min.value.sol))
             push!(tdat, stats.min.time)
             push!(ndat, stats.min.value.numevals)
             haskey(stats.min.value, :npt) && @show stats.min.value.npt
@@ -68,5 +68,28 @@ function fig_breakeven_trgloc(; config_quad_breakeven_trgloc, config_scaling_bre
             push!(vdat, norm(first(stats.samples).value/V*u"eV"))
         end
         return x, tdat, ndat, vdat
+    end
+end
+
+function fig_breakeven_log(; getpart=getval, kws...)
+    (; selfenergy) = merge(default, NamedTuple(kws))
+    do_fig_breakeven(L"$|\log(\eta)|$", "Wall clock time (s)", "# integrand evaluations"; kws...) do config_bench, series_T, series_atol_σ
+        x = Float64[]
+        tdat = Float64[]
+        ndat = Int[]
+        # vdat = prec[] # this is mean to be a measure of the conditioning of
+        # the problem, i.e. if there is a scaling between atol and η
+        for (T, atol_σ) in zip(series_T, series_atol_σ)
+            Σ, = selfenergy(; kws..., T)
+            push!(x, AutoBZ.sigma_to_eta(Σ(0.0u"eV"))/u"eV")
+            μ, = findchempot(; kws..., T)
+            stats, = benchmark_conductivity(; kws..., config_bench..., atol_σ, T, μ)
+            @show norm(getval(stats.min.value.sol))
+            push!(tdat, stats.min.time)
+            push!(ndat, stats.min.value.numevals)
+            haskey(stats.min.value, :npt) && @show stats.min.value.npt
+            # push!(vdat, norm(getpart(first(stats.samples).value)))
+        end
+        return abs.(log.(x)), tdat, ndat#, vdat
     end
 end

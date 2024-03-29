@@ -4,15 +4,14 @@ using AutoBZ
 # Ω is an interpolation parameter
 # bandwidth_bound should be the largest Ω of interest
 function conductivity_solver(; μ, bandwidth_bound, aux_inner_only=false, kws...)
-    (; model, selfenergy, choose_kω_order, quad_σ_k, quad_σ_ω, atol_σ, rtol_σ, vcomp, gauge, coord, nworkers, auxfun) = merge(default, NamedTuple(kws))
+    (; velocity, selfenergy, choose_kω_order, quad_σ_k, quad_σ_ω, atol_σ, rtol_σ, nworkers, auxfun) = merge(default, NamedTuple(kws))
 
-    h, bz, info_model = model(; kws..., gauge=Wannier())
+    hv, bz, info_velocity = velocity(; kws...)
     Σ, info_selfenergy = selfenergy(; kws...)
     β = invtemp(; kws...)
     is_order_kω = choose_kω_order(quad_σ_k, quad_σ_ω)
-    info = (; model=info_model, selfenergy=info_selfenergy, β, μ, vcomp, gauge, coord, quad_σ_ω, quad_σ_k, is_order_kω, atol_σ, rtol_σ, auxfun, aux_inner_only)
+    info = (; model_velocity=info_velocity, selfenergy=info_selfenergy, β, μ, quad_σ_ω, quad_σ_k, is_order_kω, atol_σ, rtol_σ, auxfun, aux_inner_only)
 
-    hv = GradientVelocityInterp(h, bz.A; coord, vcomp, gauge)
     w = AutoBZCore.workspace_allocate_vec(hv, AutoBZCore.period(hv), Tuple(nworkers isa Int ? fill(nworkers, ndims(hv)) : nworkers))
     σ = if !is_order_kω
         a, b = AutoBZ.fermi_window_limits(bandwidth_bound, β)

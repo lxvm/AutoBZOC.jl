@@ -81,11 +81,11 @@ uuid = "56f22d72-fd6d-98f1-02f0-08ddc0907c33"
 
 [[deps.AutoBZ]]
 deps = ["AutoBZCore", "BaryRational", "EquiBaryInterp", "FourierSeriesEvaluators", "HChebInterp", "LinearAlgebra", "Logging", "Reexport", "StaticArrays"]
-git-tree-sha1 = "3b8d971c1c3997130adc9bbf421d5882937105cd"
-repo-rev = "v0.4.3"
+git-tree-sha1 = "02e1d9f7206df0abba7d8e31c9cb5181126031e2"
+repo-rev = "v0.4.4"
 repo-url = "https://github.com/lxvm/AutoBZ.jl"
 uuid = "00d1ae05-4f20-4598-b864-bbb2ed8900e6"
-version = "0.4.1"
+version = "0.4.4"
 
     [deps.AutoBZ.extensions]
     AutoBZUnitfulExt = "Unitful"

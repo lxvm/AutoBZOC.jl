@@ -27,7 +27,7 @@ function fig_ibz(; kpath=sgnum_path, colormap=:Spectral, N_k=30, sgnum=76, which
     mymap = Colors.alphacolor.(Makie.to_colormap(cgrad([ibzcolor, ibzcolor], 100)), alpharamp)
     mymap[1] = RGBAf(0,0,0,0)
     i = 0
-    for (; Ω, vcomp, label) in config_ibz
+    for (; Ω, vcomp, label, plot_kws) in config_ibz
         i += 1
         μ, = chempot(; T, kws...)
         σ_k, info_k = conductivity_solver(; kws..., T, μ, vcomp,
@@ -51,7 +51,7 @@ function fig_ibz(; kpath=sgnum_path, colormap=:Spectral, N_k=30, sgnum=76, which
         hidespines!(ax)
         plot!(ax, kp)
         # mesh!(ax, Mesh(ibz), alpha=0.2)
-        contour!(ax, (center ? ntuple(n -> n == center_half ? klat.iterators[n][(end-div(size(data_σ_k,n),2)+1):end] .- 0.5 : klat.iterators[n] .- 0.5, 3) : klat.iterators)..., center ? circshift(data_σ_k, map(l -> div(l,2), size(data_σ_k)))[ntuple(n -> n == center_half ? (lastindex(data_σ_k,n)-div(size(data_σ_k,n),2)+1:(lastindex(data_σ_k,n))) : (firstindex(data_σ_k,n):lastindex(data_σ_k,n)), 3)...] : data_σ_k; isorange=0.05, levels = 3)
+        contour!(ax, (center ? ntuple(n -> n == center_half ? klat.iterators[n][(end-div(size(data_σ_k,n),2)+1):end] .- 0.5 : klat.iterators[n] .- 0.5, 3) : klat.iterators)..., center ? circshift(data_σ_k, map(l -> div(l,2), size(data_σ_k)))[ntuple(n -> n == center_half ? (lastindex(data_σ_k,n)-div(size(data_σ_k,n),2)+1:(lastindex(data_σ_k,n))) : (firstindex(data_σ_k,n):lastindex(data_σ_k,n)), 3)...] : data_σ_k; plot_kws...)
         Label(fig[2,i], label)
 
     end

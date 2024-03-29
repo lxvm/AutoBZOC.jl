@@ -168,7 +168,7 @@ function fermiliquid_selfenergy(; T, kws...)
     return ConstScalarSelfEnergy(-im*η, map(prec, lims_Σ)...), info
 end
 
-function autobz_selfenergy(; file_selfenergy, offset_scattering, config_selfenergy=(;), kws...)
+function autobz_selfenergy(; file_selfenergy, offset_scattering, selfenergy_soc=nothing, config_selfenergy=(;), kws...)
     (; prec, lims_Σ) = merge(default, NamedTuple(kws))
     Σ = load_self_energy(file_selfenergy; precision=prec, config_selfenergy...)
     lims_Σ = (prec(max(Σ.lb*u"eV", lims_Σ[1])), prec(min(Σ.ub*u"eV", lims_Σ[2])))
@@ -177,7 +177,9 @@ function autobz_selfenergy(; file_selfenergy, offset_scattering, config_selfener
     u_ω = one(prec)*u"eV"
     iu_ω = 1/u_ω
     return MatrixSelfEnergy(lims_Σ...) do ω
-        Σ(ω*iu_ω)*u_ω - imη*I
+        val = Σ(ω*iu_ω)*u_ω - imη*I
+        d = LinearAlgebra.checksquare(val)
+        selfenergy_soc === nothing ? val : AutoBZ.SOCMatrix(SMatrix{d,d,eltype(val),d^2}(val))
     end, info
 end
 
@@ -207,7 +209,7 @@ function wannier90_model(; seed, bzkind=FBZ(), config_wannier90=(;), kws...)
     info = (; name=:wannier90, seed, gauge, bzkind, prec, config_wannier90...)
     h_, bz_ = load_wannier90_data(seed; gauge, bz=bzkind, precision=prec, config_wannier90...)
     f_ = AutoBZ.parentseries(h_)
-    f = AutoBZ.Freq2RadSeries(FourierSeries(f_.c * u"eV"; period=f_.t, offset=f_.o, deriv=f_.a))
+    f = AutoBZ.Freq2RadSeries(f_ isa FourierSeries ? FourierSeries(f_.c * u"eV"; period=f_.t, offset=f_.o, deriv=f_.a) : f_ isa AutoBZ.WrapperFourierSeries ? AutoBZ.WrapperFourierSeries(f_.w, FourierSeries(f_.s.c * u"eV"; period=f_.s.t, offset=f_.s.o, deriv=f_.s.a)) : error("not implemented"))
     h = h_ isa SOCHamiltonianInterp ? AutoBZ.SOCHamiltonianInterp(f, h_.λ; gauge) : HamiltonianInterp(f; gauge)
     bz = SymmetricBZ(bz_.A * u"Å", bz_.B / u"Å", bz_.lims, bz_.syms)
     return h, bz, info
@@ -272,4 +274,37 @@ function chempot_manual(; μ, kws...)
     h, bz, info_model = model(; kws...)
     info = (; model=info_model, prec, μ)
     return prec(μ), det(bz.B), info
+end
+
+function model_velocity(; kws...)
+    (; model, vcomp, gauge, coord) = merge(default, NamedTuple(kws))
+    h, bz, info_model = model(; kws..., gauge=Wannier())
+    hv = GradientVelocityInterp(h, bz.A; coord, vcomp, gauge)
+    info = (; info_model..., vcomp, gauge, coord)
+    return hv, bz, info
+end
+
+function wannier90_velocity(; seed, bzkind=FBZ(), config_wannier90_velocity=(;), kws...)
+    (; gauge, vcomp, coord, prec) = merge(default, NamedTuple(kws))
+    info = (; name=:wannier90, seed, gauge, vcomp, coord, bzkind, prec, config_wannier90_velocity...)
+    hv_, bz_ = load_wannier90_data(seed; gauge, vcomp, coord, bz=bzkind, precision=prec, config_wannier90_velocity...)
+    bz = SymmetricBZ(bz_.A * u"Å", bz_.B / u"Å", bz_.lims, bz_.syms)
+    if hv_ isa GradientVelocityInterp
+        h_ = AutoBZ.parentseries(hv_)
+        f_ = AutoBZ.parentseries(h_)
+        f = AutoBZ.Freq2RadSeries(f_ isa FourierSeries ? FourierSeries(f_.c * u"eV"; period=f_.t, offset=f_.o, deriv=f_.a) : f_ isa AutoBZ.WrapperFourierSeries ? AutoBZ.WrapperFourierSeries(f_.w, FourierSeries(f_.s.c * u"eV"; period=f_.s.t, offset=f_.s.o, deriv=f_.s.a)) : error("not implemented"))
+        h = h_ isa SOCHamiltonianInterp ? AutoBZ.SOCHamiltonianInterp(f, h_.λ; gauge=AutoBZ.gauge(h_)) : HamiltonianInterp(f; gauge=AutoBZ.gauge(h_))
+        hv = GradientVelocityInterp(h, bz.A; gauge, coord, vcomp)
+    elseif hv_ isa CovariantVelocityInterp
+        a_ = hv_.a
+        a = BerryConnectionInterp{AutoBZ.CoordDefault(typeof(a_))}(AutoBZ.coord(a_) isa Cartesian ? ManyFourierSeries(map(f -> f isa FourierSeries ? FourierSeries(f.c * u"Å"; period=f.t, offset=f.o, deriv=f.a) : f isa AutoBZ.WrapperFourierSeries ? AutoBZ.WrapperFourierSeries(f.w, FourierSeries(f.s.c * u"Å"; period=f.s.t, offset=f.s.o, deriv=f.s.a)) : error("not implemented"), a_.a.s)...; period=AutoBZ.period(a_.a)) : a_.a, bz.B; coord=AutoBZ.coord(a_))
+        h_ = AutoBZ.parentseries(hv_.hv)
+        f_ = AutoBZ.parentseries(h_)
+        f = AutoBZ.Freq2RadSeries(f_ isa FourierSeries ? FourierSeries(f_.c * u"eV"; period=f_.t, offset=f_.o, deriv=f_.a) : f_ isa AutoBZ.WrapperFourierSeries ? AutoBZ.WrapperFourierSeries(f_.w, FourierSeries(f_.s.c * u"eV"; period=f_.s.t, offset=f_.s.o, deriv=f_.s.a)) : error("not implemented"))
+        h = h_ isa SOCHamiltonianInterp ? AutoBZ.SOCHamiltonianInterp(f, h_.λ; gauge=AutoBZ.gauge(h_)) : HamiltonianInterp(f; gauge=AutoBZ.gauge(h_))
+        hv = CovariantVelocityInterp(GradientVelocityInterp(h, bz.A; gauge=AutoBZ.gauge(hv_.hv), coord=AutoBZ.coord(hv_.hv), vcomp=AutoBZ.vcomp(hv_.hv)), a; gauge, vcomp, coord)
+    else
+        error("configure velocity interpolant with config_wannier90_velocity keyword")
+    end
+    return hv, bz, info
 end
