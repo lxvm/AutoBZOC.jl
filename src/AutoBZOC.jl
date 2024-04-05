@@ -4,6 +4,7 @@ using LinearAlgebra
 using SimpleNonlinearSolve
 using AutoBZ
 using Unitful, UnitfulAtomic
+using ColorSchemes, Colors
 using GLMakie
 using LaTeXStrings
 
@@ -100,8 +101,8 @@ default = (;
     series_Δ = u"eV" * range(-1, 1, length=21),
     config_vcomp = (
         (vcomp=Whole(), label="whole",      color=:black,   densitycolormap=nothing,Ω=0.0u"eV", plot_trace=true,    plot_density=false, plot_ibz=false),
-        (vcomp=Intra(), label="intra-band", color=:orange,  densitycolormap=Makie.Reverse(:RdBu),  Ω=0.0u"eV", plot_trace=true,    plot_density=true,  plot_ibz=false),
-        (vcomp=Inter(), label="inter-band", color=:green,   densitycolormap=Makie.Reverse(:RdBu),  Ω=0.4u"eV", plot_trace=true,    plot_density=true,  plot_ibz=true),
+        (vcomp=Intra(), label="intra-band", color=:orange,  densitycolormap=reverse(AutoBZOC.colormap("RdBu", 256; mid=0.9)),  Ω=0.0u"eV", plot_trace=true,    plot_density=true,  plot_ibz=false),
+        (vcomp=Inter(), label="inter-band", color=:green,   densitycolormap=reverse(AutoBZOC.colormap("RdBu", 256; mid=0.9)),  Ω=0.4u"eV", plot_trace=true,    plot_density=true,  plot_ibz=true),
     ),
     config_quad_breakeven = (;
         algs = (
@@ -136,6 +137,7 @@ default = (;
                 yticklabelrotation=pi/2,
             ),
             fontsize = 16,
+            linewidth = 1.5,
         ),
     ),
 )

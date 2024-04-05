@@ -11,7 +11,12 @@ function fig3a(; alpha=1.0, alpha_ramp = range(0, 1, length=256), ylims=(0, 50),
     kws...)
     (; scalar_func, scalar_text, kpath, N_k, N_ω, N_Ω, interp_k, interp_ω, interp_Ω, T, lims_Ω, lims_ω, unit_σ, factor_σ, nsp, ndim, prec, cache_dir, nthreads, auxfun, config_vcomp, atol_σ, rtol_σ, interp_tolratio) = merge(default, NamedTuple(kws))
 
-    fig = Figure(resolution=(800,1000))
+    fig = Figure(;
+        figure_padding = 100,
+        resolution=(7200,2400),
+        fontsize=100,
+        linewidth=10,
+    )
 
     N_vcomp = sum(v -> v.plot_density, config_vcomp)
 
@@ -27,22 +32,34 @@ function fig3a(; alpha=1.0, alpha_ramp = range(0, 1, length=256), ylims=(0, 50),
     series_Ω = range(prec.(lims_Ω)..., length=N_Ω)
     unit_Ω = unit(eltype(series_Ω))
 
-    ax = Axis(fig[1,1];
-        title="Orbital structure of optical conductivity",
+    subgl_left = GridLayout()
+    subgl_left[1,1] = ax = Axis(fig;
+        # title="Orbital structure of optical conductivity",
         xlabel=L"$\Omega$ %$(_unit_Lstr(unit_Ω))",
-        xticks=unique!(Iterators.flatten((getproperty.(config_vcomp, :Ω), lims_Ω)) ./ unit_Ω),
+        xticks=(unique!(Iterators.flatten((getproperty.(config_vcomp, :Ω), lims_Ω)) ./ unit_Ω), [ string(isinteger(s) ? Int(s) : s) for s in unique!(Iterators.flatten((getproperty.(config_vcomp, :Ω), lims_Ω)) ./ unit_Ω)]),
         ylabel=L"%$(scalar_text) %$(_unit_Lstr(unit_σ))",
         limits=(lims_Ω ./ unit_Ω, ylims),
         ygridvisible=false,
+        spinewidth = 4,
+        xticksize = 15,
+        xtickwidth = 4,
+        yticksize = 15,
+        ytickwidth = 4,
     )
 
     alphabet = 'a':'z'
-    Legend(fig[1,2],
+    axislegend(ax,
         [LineElement(; color) for (; color) in config_vcomp],
         [label for (;label) in config_vcomp],
         string(alphabet[1]),
-        width = Relative(1),
+        width = Relative(0.4),
+        position = :rt,
+        framewidth=4,
+        patchsize = (100f0, 100f0),
+        patchlabelgap = 15,
     )
+
+    subgl_right = GridLayout()
 
     i = 0
     for (; vcomp, label, color, densitycolormap, Ω, plot_trace, plot_density) in config_vcomp
@@ -54,14 +71,14 @@ function fig3a(; alpha=1.0, alpha_ramp = range(0, 1, length=256), ylims=(0, 50),
                 conductivity_batchsolve(; μ, T, kws..., vcomp, series_Ω)[1]
             end .|> scalar_func
 
-            lines!(ax, series_Ω ./ unit_Ω, @show(upreferred.((nsp*factor_σ/(2pi)^ndim/unit_σ) .* data_σ)); color, label)
+            lines!(ax, series_Ω ./ unit_Ω, upreferred.((nsp*factor_σ/(2pi)^ndim/unit_σ) .* data_σ); color, label)
         end
         if plot_density
             i += 1
             densitycolormap = !isnothing(densitycolormap) ? densitycolormap :
                 Colors.alphacolor.(Makie.to_colormap(cgrad([color, color], 100)), alpha_ramp)
             lb_ω, = AutoBZ.fermi_window_limits(Ω, β; rtol=1e-2)
-            lims_ω = (lb_ω, -lb_ω)
+            lims_ω = (lb_ω, -lb_ω-Ω)
             series_ω = range(prec.(lims_ω)..., length=N_ω)
             unit_ω = unit(eltype(series_ω))
 
@@ -77,17 +94,25 @@ function fig3a(; alpha=1.0, alpha_ramp = range(0, 1, length=256), ylims=(0, 50),
                 scalar_func(fermi_window(β, ω, Ω)*Γ(k, (; ω₁=ω, ω₂=ω+Ω)))
             end
 
-            ax_vcomp = Axis(fig[2i+1,1];
-                xlabel=L"Spectral density of %$(scalar_text) at $\Omega$ = %$Ω, T = %$T",
-                ylabel=L"$\omega$ %$(_unit_Lstr(unit_ω))",
+            subgl_right[2i,1] = ax_vcomp = Axis(fig;
+                # xlabel=L"Spectral density of %$(scalar_text) at $\Omega$ = %$Ω, T = %$T",
+                # ylabel=L"$\omega$ %$(_unit_Lstr(unit_ω))",
                 xticks=ticks_k,
                 yticks=ticks_ω,
                 limits = (extrema(kloc), lims_ω ./ unit_ω),
+                spinewidth = 4,
+                ylabelsize = 75,
+                xtickalign = 0,
+                xticksize = 15,
+                xtickwidth = 4,
+                ytickalign = 0,
+                yticksize = 15,
+                ytickwidth = 4,
             )
 
             kpathinterpplot!(ax_vcomp, kps, series_ω, σ; alpha, densitycolormap)
             AutoBZ.shift!(σ.w.series, μ)
-            kpathinterpplot!(ax_vcomp, kps, AutoBZ.parentseries(σ.w.series))
+            kpathinterpplot!(ax_vcomp, kps, AutoBZ.parentseries(σ.w.series); series_kws = (; linewidth=8))
 
             prec_v = x -> map(prec, x)
             data_σ_k = if interp_k
@@ -108,11 +133,16 @@ function fig3a(; alpha=1.0, alpha_ramp = range(0, 1, length=256), ylims=(0, 50),
                 cache_batchsolve(σ_k.f.f.f.solver, p_k, cache_path, id_k, nthreads)
             end .|> scalar_func
 
-            ax_vcomp_k = Axis(fig[2i,1];
+            subgl_right[2i-1,1] = ax_vcomp_k = Axis(fig;
                 ylabel=L"$\int$ %$(scalar_text) $\mathrm{d} \omega$",
                 limits=(extrema(kloc), nothing),
+                spinewidth = 4,
                 xticks=ticks_k[1],
+                yticksvisible=false,
                 yticklabelsvisible=false,
+                ylabelsize = 60,
+                xticksize = 15,
+                xtickwidth = 4,
             )
             linkxaxes!(ax_vcomp_k, ax_vcomp)
             hidexdecorations!(ax_vcomp_k, ticks = false, grid = false)
@@ -128,7 +158,7 @@ function fig3a(; alpha=1.0, alpha_ramp = range(0, 1, length=256), ylims=(0, 50),
                 id_ω = string((; info_ω..., interp_tolratio, lims_ω))
 
                 cache_path = joinpath(cache_dir, cache_file_interp_cond_ω)
-                σ_ω = cache_hchebinterp(map(prec, lims_ω)..., atol_σ_ω, rtol_σ, cache_path, id_ω) do ω
+                σ_ω = cache_hchebinterp(map(prec, lims_ω)..., atol_σ_ω, rtol_σ, 2, cache_path, id_ω) do ω
                     batchsolve(Γ, paramzip(; ω₁=ω, ω₂=ω .+ prec(Ω)); nthreads) .* fermi_window.(β, ω, prec(Ω))
                 end
                 map(σ_ω, series_ω)
@@ -142,38 +172,53 @@ function fig3a(; alpha=1.0, alpha_ramp = range(0, 1, length=256), ylims=(0, 50),
             end .|> scalar_func
 
 
-            ax_vcomp_ω = Axis(fig[2i+1,2];
+            subgl_right[2i,2] = ax_vcomp_ω = Axis(fig;
                 xlabel=L"$\int$ %$(scalar_text) $\mathrm{dk}$",
+                xticksvisible=false,
                 xticklabelsvisible=false,
+                spinewidth = 4,
                 yticks=ticks_ω[1],
                 limits = (nothing, lims_ω ./ unit_ω),
+                xlabelsize = 60,
+                yticksize = 15,
+                ytickwidth = 4,
             )
             linkyaxes!(ax_vcomp_ω, ax_vcomp)
             hideydecorations!(ax_vcomp_ω, ticks = false, grid = false)
             lines!(ax_vcomp_ω, data_σ_ω ./ maximum(data_σ_ω), series_ω ./ unit_ω; color)
 
-            Legend(fig[2i,2],
-                [LineElement(; color), LineElement(; color=:black)],
-                [label, "spectrum"],
+            subgl_right[2i-1,2] = Legend(fig,
+                [LineElement(; color, linewidth = 8)],
+                [label],
                 string(alphabet[i+1]),
                 width = Relative(1),
                 height = Relative(1),
+                patchsize = (100f0, 100f0),
+                patchlabelgap = 15,
+                framewidth=4,
             )
 
         end
     end
 
-    colsize!(fig.layout, 1, Relative(4/5))
-    colsize!(fig.layout, 2, Relative(1/5))
+    colsize!(subgl_right, 1, Relative(4/5))
+    colsize!(subgl_right, 2, Relative(1/5))
 
-    rowsize!(fig.layout, 1, Relative(1/3))
     i = 0
     for (; plot_density) in config_vcomp
         plot_density || continue
         i += 1
-        rowsize!(fig.layout, 2i,    Relative(2/5/N_vcomp*2/3))
-        rowsize!(fig.layout, 2i+1,  Relative(3/5/N_vcomp*2/3))
+        rowsize!(subgl_right, 2i-1,    Relative(1/3/N_vcomp))
+        rowsize!(subgl_right, 2i,  Relative(2/3/N_vcomp))
     end
+
+    fig.layout[1,1] = subgl_left
+    fig.layout[1,2] = subgl_right
+
+    colsize!(fig.layout, 1, Relative(1/3))
+    colsize!(fig.layout, 2, Relative(2/3))
+
+    colgap!(fig.layout, 1, Relative(0.02))
 
     return fig
 end

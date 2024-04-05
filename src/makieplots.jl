@@ -7,6 +7,7 @@ using LinearAlgebra: dot
 @recipe(KPathInterpPlot) do scene
     Theme(
         seriescolor=:cyclic_grey_15_85_c0_n256,
+        series_kws = (;),
         densitycolormap=:viridis,
         alpha=1.0,
     )
@@ -31,7 +32,7 @@ function Makie.plot!(kpp::KPathInterpPlot{<:Tuple{AbstractVector{<:Real},Abstrac
     kloc = kpp[1][]
     data = kpp[2][]
     # TODO make this function observable compatible
-    series!(kpp, kloc, data, color=kpp.seriescolor)
+    series!(kpp, kloc, data; color=kpp.seriescolor, kpp.series_kws...)
 
     return kpp
 end

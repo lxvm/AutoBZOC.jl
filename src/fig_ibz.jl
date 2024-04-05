@@ -21,9 +21,9 @@ function fig_ibz(; kpath=sgnum_path, colormap=:Spectral, N_k=30, sgnum=76, which
         len = b - a
         (a-len/10, b+len/10)
     end
-    limits = center ? ntuple(_ -> (-0.5, 0.5), 3) : ntuple(_ -> (0.0, 1.0), 3)
+    limits = center ? ntuple(_ -> (-0.3, 0.5/1.1), 3) : ntuple(_ -> (0.0, 1.0), 3)
 
-    fig = Figure(resolution=(1600,800))
+    fig = Figure(resolution=(3200,1600), figure_padding=0.0)
     mymap = Colors.alphacolor.(Makie.to_colormap(cgrad([ibzcolor, ibzcolor], 100)), alpharamp)
     mymap[1] = RGBAf(0,0,0,0)
     i = 0
@@ -49,10 +49,10 @@ function fig_ibz(; kpath=sgnum_path, colormap=:Spectral, N_k=30, sgnum=76, which
         ax = Axis3(fig[1,i]; azimuth=2pi/3, elevation=-pi/3, limits)
         hidedecorations!(ax)
         hidespines!(ax)
-        plot!(ax, kp)
+        plot!(ax, kp; textkws = (; fontsize=96, strokewidth = 5), linewidth = 8, markersize = 50)
         # mesh!(ax, Mesh(ibz), alpha=0.2)
-        contour!(ax, (center ? ntuple(n -> n == center_half ? klat.iterators[n][(end-div(size(data_σ_k,n),2)+1):end] .- 0.5 : klat.iterators[n] .- 0.5, 3) : klat.iterators)..., center ? circshift(data_σ_k, map(l -> div(l,2), size(data_σ_k)))[ntuple(n -> n == center_half ? (lastindex(data_σ_k,n)-div(size(data_σ_k,n),2)+1:(lastindex(data_σ_k,n))) : (firstindex(data_σ_k,n):lastindex(data_σ_k,n)), 3)...] : data_σ_k; plot_kws...)
-        Label(fig[2,i], label)
+        volume!(ax, (center ? ntuple(n -> n == center_half ? klat.iterators[n][(end-div(size(data_σ_k,n),2)+1):end] .- 0.5 : klat.iterators[n] .- 0.5, 3) : klat.iterators)..., center ? circshift(data_σ_k, map(l -> div(l,2), size(data_σ_k)))[ntuple(n -> n == center_half ? (lastindex(data_σ_k,n)-div(size(data_σ_k,n),2)+1:(lastindex(data_σ_k,n))) : (firstindex(data_σ_k,n):lastindex(data_σ_k,n)), 3)...] : data_σ_k; plot_kws...)
+        Label(fig[2,i], label; fontsize=96)
 
     end
     for j in 1:i
