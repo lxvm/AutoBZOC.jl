@@ -6,17 +6,17 @@ function fig_err(; Ω, kws...)
     edat = zeros(Float64, dims)
     μ, _, info = findchempot(; kws..., T)
     stats_ref, = benchmark_conductivity(; kws..., config_reference..., μ, T, Ω)
-    val = first(stats_ref.samples).value
+    val = first(stats_ref.samples).value.sol
     @info "reference conductivity value" val=val.val
 
     series_atol_σ = series_rtol_σ .* norm(getval(val))
     for (j, conf) in enumerate(config_auxquad)
         for (i, atol_σ) in enumerate(series_atol_σ)
             stats, = benchmark_conductivity(; kws..., conf..., μ, T, Ω, rtol_σ=0.0, atol_σ=conf.auxfun === nothing ? atol_σ : AuxValue(atol_σ, conf.atol_σ_aux))
-            v = first(stats.samples).value
-            # @show norm(getaux(v)) norm(getval(v))
+            v = first(stats.samples).value.sol
+            @show stats.min # norm(getaux(v)) norm(getval(v))
             tdat[i,j] = stats.min.time
-            ndat[i,j] = stats.min.numevals
+            ndat[i,j] = stats.min.value.numevals
             edat[i,j] = norm(getval(v)-getval(val))/norm(getval(val))
         end
     end

@@ -27,16 +27,16 @@ function density_solver(; kws...)
 end
 
 function density_interp(; cache_file_interp_density="cache-interp-density.jld2", kws...)
-    (; atol_n, rtol_n, lims_μ, interptolratio, prec, cache_dir, nthreads) = merge(default, NamedTuple(kws))
+    (; atol_n, rtol_n, lims_μ, interp_tolratio, prec, cache_dir, nthreads) = merge(default, NamedTuple(kws))
 
-    ρ, V, info_solver = density_solver(; kws..., atol_n=atol_n/interptolratio, rtol_n=rtol_n/interptolratio)
-    info = (; info_solver..., atol_n, rtol_n, interptolratio, prec, lims_μ)
+    ρ, V, info_solver = density_solver(; kws..., atol_n=atol_n/interp_tolratio, rtol_n=rtol_n/interp_tolratio)
+    info = (; info_solver..., atol_n, rtol_n, interp_tolratio, prec, lims_μ)
     id = string(info)
 
     lb, ub = map(prec, lims_μ)
     cache_path = joinpath(cache_dir, cache_file_interp_density)
     @info "Density interpolation" info...
-    ρ_interp = cache_hchebinterp(lb, ub, atol_n*V, rtol_n, cache_path, id) do μ
+    ρ_interp = cache_hchebinterp(lb, ub, atol_n*V, rtol_n, 1, cache_path, id) do μ
         batchsolve(ρ, paramzip(; μ); nthreads=nthreads)
     end
     return ((; μ) -> ρ_interp(μ)), V, info
@@ -55,7 +55,7 @@ function density_batchsolve(; μ_series, cache_file_values_density="cache-values
     return data, V, info
 end
 
-function findchempot(; cache_filroot_es_chempot="cache-roots-chempot.jld2", kws...)
+function findchempot(; cache_file_roots_chempot="cache-roots-chempot.jld2", kws...)
     (; atol_n, rtol_n, root_n_μ, lims_μ, ν, nsp, prec, interp_μ, cache_dir) = merge(default, NamedTuple(kws))
 
     ρ, V, info_density = interp_μ ? density_interp(; kws...) : density_solver(; kws...)
@@ -65,7 +65,7 @@ function findchempot(; cache_filroot_es_chempot="cache-roots-chempot.jld2", kws.
     u = prec(oneunit(eltype(lims_μ)))
     lb, ub = map(x -> prec(x/u), lims_μ)
     p = (u, ρ, V, prec(ν/nsp))
-    cache_path = joinpath(cache_dir, cache_filroot_es_chempot)
+    cache_path = joinpath(cache_dir, cache_file_roots_chempot)
     @info "Chemical potential finding" info...
     μ = cache_rootsolve(lb, ub, p, root_n_μ, atol_n, rtol_n, cache_path, id) do μ, (u, ρ, V, ν)
         oftype(ν, ρ(; μ=μ*u)/V)-ν

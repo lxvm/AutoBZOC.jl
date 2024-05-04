@@ -10,7 +10,8 @@ function trgloc_solver(; μ, kws...)
     info = (; model=info_model, selfenergy=info_selfenergy, μ, quad_g_k, atol_g, rtol_g)
 
     w = AutoBZCore.workspace_allocate_vec(h, AutoBZCore.period(h), Tuple(nworkers isa Int ? fill(nworkers, ndims(h)) : nworkers))
-    integrand = TrGlocIntegrand(w; Σ, μ)
+    integrand = DOSIntegrand(w; Σ, μ)
+    # integrand = TrGlocIntegrand(w; Σ, μ)
     g = IntegralSolver(integrand, bz, quad_g_k; abstol=atol_g, reltol=rtol_g)
     return g, info
 end
@@ -56,7 +57,7 @@ function benchmark_trgloc(; ω, cache_file_bench_trgloc="cache-bench-trgloc.jld2
     data = cache_benchmark((prec(ω)), (;), cache_path, id; kws...) do ω
         sol = AutoBZCore.solve_p(g, (; ω))
         gcnt[] = sol.numevals
-        return sol.u
+        return (; sol=sol.u, numevals = sol.numevals)
     end
     return data, info
 end

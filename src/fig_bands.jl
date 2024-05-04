@@ -1,7 +1,7 @@
 function fig_bands(; kws...)
-    (; model, kpath, N_k, T) = merge(default, NamedTuple(kws))
+    (; chempot, model, kpath, N_k, T) = merge(default, NamedTuple(kws))
 
-    μ, = findchempot(; kws..., T)
+    μ, = chempot(; kws..., T)
     h, = model(; kws...)
     AutoBZ.shift!(h, μ)
 

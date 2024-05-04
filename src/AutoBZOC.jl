@@ -100,7 +100,7 @@ default = (;
     series_T = u"K" * [256.0, 181.0, 128.0, 90.5, 64.0],
     series_Δ = u"eV" * range(-1, 1, length=21),
     config_vcomp = (
-        (vcomp=Whole(), label="whole",      color=:black,   densitycolormap=nothing,Ω=0.0u"eV", plot_trace=true,    plot_density=false, plot_ibz=false),
+        (vcomp=Whole(), label="total",      color=:black,   densitycolormap=nothing,Ω=0.0u"eV", plot_trace=true,    plot_density=false, plot_ibz=false),
         (vcomp=Intra(), label="intra-band", color=:orange,  densitycolormap=reverse(AutoBZOC.colormap("RdBu", 256; mid=0.9)),  Ω=0.0u"eV", plot_trace=true,    plot_density=true,  plot_ibz=false),
         (vcomp=Inter(), label="inter-band", color=:green,   densitycolormap=reverse(AutoBZOC.colormap("RdBu", 256; mid=0.9)),  Ω=0.4u"eV", plot_trace=true,    plot_density=true,  plot_ibz=true),
     ),
@@ -157,6 +157,7 @@ include("caching.jl")
 include("trgloc.jl")
 include("density.jl")
 include("transport.jl")
+include("tf.jl")
 include("conductivity.jl")
 include("conductivity_test.jl")
 include("conductivity_only.jl")
@@ -172,6 +173,7 @@ include("fig_cfs.jl")
 include("fig_ibz.jl")
 include("fig_dos.jl")
 include("fig_err.jl")
+include("fig_fsum.jl")
 include("make.jl")
 include("symiai.jl")
 

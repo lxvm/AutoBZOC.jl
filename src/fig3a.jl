@@ -9,7 +9,7 @@ function fig3a(; alpha=1.0, alpha_ramp = range(0, 1, length=256), ylims=(0, 50),
     cache_file_interp_cond_k="cache-interp-cond-k.jld2", cache_file_interp_cond_ω="cache-interp-cond-ω.jld2",
     cache_file_values_cond_k="cache-values-cond-k.jld2", cache_file_values_cond_ω="cache-values-cond-ω.jld2",
     kws...)
-    (; scalar_func, scalar_text, kpath, N_k, N_ω, N_Ω, interp_k, interp_ω, interp_Ω, T, lims_Ω, lims_ω, unit_σ, factor_σ, nsp, ndim, prec, cache_dir, nthreads, auxfun, config_vcomp, atol_σ, rtol_σ, interp_tolratio) = merge(default, NamedTuple(kws))
+    (; scalar_func, scalar_text, chempot, kpath, N_k, N_ω, N_Ω, interp_k, interp_ω, interp_Ω, T, lims_Ω, lims_ω, unit_σ, factor_σ, nsp, ndim, prec, cache_dir, nthreads, auxfun, config_vcomp, atol_σ, rtol_σ, interp_tolratio) = merge(default, NamedTuple(kws))
 
     fig = Figure(;
         figure_padding = 100,
@@ -21,7 +21,7 @@ function fig3a(; alpha=1.0, alpha_ramp = range(0, 1, length=256), ylims=(0, 50),
     N_vcomp = sum(v -> v.plot_density, config_vcomp)
 
     β = invtemp(; kws..., T)
-    μ, = findchempot(; kws..., T)
+    μ, = chempot(; kws..., T)
 
     kp = kpath(; kws...)
     kpi = interpolate(kp, N_k)
@@ -112,7 +112,7 @@ function fig3a(; alpha=1.0, alpha_ramp = range(0, 1, length=256), ylims=(0, 50),
 
             kpathinterpplot!(ax_vcomp, kps, series_ω, σ; alpha, densitycolormap)
             AutoBZ.shift!(σ.w.series, μ)
-            kpathinterpplot!(ax_vcomp, kps, AutoBZ.parentseries(σ.w.series); series_kws = (; linewidth=8))
+            # kpathinterpplot!(ax_vcomp, kps, AutoBZ.parentseries(σ.w.series); series_kws = (; linewidth=8))
 
             prec_v = x -> map(prec, x)
             data_σ_k = if interp_k
@@ -148,13 +148,14 @@ function fig3a(; alpha=1.0, alpha_ramp = range(0, 1, length=256), ylims=(0, 50),
             hidexdecorations!(ax_vcomp_k, ticks = false, grid = false)
 
             lines!(ax_vcomp_k, kloc, data_σ_k ./ maximum(data_σ_k); color)
-
+            @show minimum(data_σ_k)
 
             a, b = AutoBZ.fermi_window_limits(Ω, β)
             atol_σ_ω = atol_σ/(b-a)
 
             data_σ_ω = if interp_ω
-                Γ, info_ω = transport_solver(; kws..., T, μ, vcomp, atol_Γ=atol_σ_ω/interp_tolratio/AutoBZ.fermi_window_maximum(β, Ω), rtol_Γ=rtol_σ/interp_tolratio)
+                Γ, info_ω = transport_solver(; kws..., T, μ, vcomp, atol_Γ=atol_σ/interp_tolratio, rtol_Γ=rtol_σ/interp_tolratio)
+                # Γ, info_ω = transport_solver(; kws..., T, μ, vcomp, atol_Γ=atol_σ_ω/interp_tolratio/AutoBZ.fermi_window_maximum(β, Ω), rtol_Γ=rtol_σ/interp_tolratio)
                 id_ω = string((; info_ω..., interp_tolratio, lims_ω))
 
                 cache_path = joinpath(cache_dir, cache_file_interp_cond_ω)
@@ -163,14 +164,14 @@ function fig3a(; alpha=1.0, alpha_ramp = range(0, 1, length=256), ylims=(0, 50),
                 end
                 map(σ_ω, series_ω)
             else
-                Γ, info_ω = transport_solver(; kws..., μ, vcomp, atol_Γ=atol_σ_ω/AutoBZ.fermi_window_maximum(β, Ω), rtol_Γ=rtol_σ)
+                Γ, info_ω = transport_solver(; kws..., μ, vcomp, atol_Γ=atol_σ, rtol_Γ=rtol_σ)
+                # Γ, info_ω = transport_solver(; kws..., μ, vcomp, atol_Γ=atol_σ_ω/AutoBZ.fermi_window_maximum(β, Ω), rtol_Γ=rtol_σ)
                 cache_path = joinpath(cache_dir, cache_file_values_cond_ω)
                 series_ω = range(map(prec, lims_ω)...; length=N_ω)
                 p_ω = paramzip(; ω₁=series_ω, ω₂=series_ω .+ prec(Ω))
                 id_ω = string((; info_ω..., ω=hash(p_ω)))
                 cache_batchsolve(Γ, p_ω, cache_path, id_ω, nthreads) .* fermi_window.(β, series_ω, prec(Ω))
             end .|> scalar_func
-
 
             subgl_right[2i,2] = ax_vcomp_ω = Axis(fig;
                 xlabel=L"$\int$ %$(scalar_text) $\mathrm{dk}$",
@@ -186,6 +187,7 @@ function fig3a(; alpha=1.0, alpha_ramp = range(0, 1, length=256), ylims=(0, 50),
             linkyaxes!(ax_vcomp_ω, ax_vcomp)
             hideydecorations!(ax_vcomp_ω, ticks = false, grid = false)
             lines!(ax_vcomp_ω, data_σ_ω ./ maximum(data_σ_ω), series_ω ./ unit_ω; color)
+            @show minimum(data_σ_ω)
 
             subgl_right[2i-1,2] = Legend(fig,
                 [LineElement(; color, linewidth = 8)],

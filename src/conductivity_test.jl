@@ -43,7 +43,7 @@ Base.complex(a::AuxArray) = AuxArray(complex(a.v))
 # first in the order of the array
 AutoBZCore.IteratedIntegration.AuxQuadGK.eachorder(a::AuxArray) =
     map(i -> IndexOrdering(Base.Order.Reverse, i), eachindex(a.v))
-AutoBZCore.symmetrize(f, bz, a::AuxArray) = AuxArray(map(x -> symmetrize(f, bz, x), a.v))
+AutoBZCore.symmetrize(f, bz, a::AuxArray) = AuxArray(map(x -> AutoBZCore.symmetrize(f, bz, x), a.v))
 AutoBZCore.symmetrize(f, ::AutoBZCore.FullBZ, a::AuxArray) = a
 
 AutoBZ._inv(a::AuxArray) = AuxArray(map(AutoBZ._inv, a.v))
@@ -200,6 +200,17 @@ function benchmark_conductivity_test(; Ω, cache_file_bench_cond_test="cache-ben
     cache_path = joinpath(cache_dir, cache_file_bench_cond_test)
 
     @info "Conductivity benchmark" info...
-    data = cache_benchmark(σ, (), (; Ω=prec(Ω)), cache_path, id; kws...)
+    _σ = (args...; kws...) -> begin
+        gcnt[] = 0
+        sol = σ(args...; kws...)
+        # @show σ.alg
+        # @show propertynames(σ.f.p[4].cache[1].rule)
+        if !(σ.alg isa AutoBZCore.AutoBZAlgorithm) && σ.f.p[3] isa AutoPTR
+            (; sol, numevals=gcnt[], npt=getnpt.(σ.f.p[4].cache))
+        else
+            (; sol, numevals=gcnt[])
+        end
+    end
+    data = cache_benchmark(_σ, (), (; Ω=prec(Ω)), cache_path, id; kws...)
     return data, info
 end

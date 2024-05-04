@@ -14,6 +14,11 @@ function do_make(; figure_path=joinpath(pwd(), "figs"), target=:all, io=stderr, 
             save(joinpath(figure_path, "crossover_dos.png"), fg)
         end
 
+        if target == :dos_log || target == :all
+            fgl = fig_breakeven_trgloc_log(; kws...)
+            save(joinpath(figure_path, "crossover_dos_log.png"), fgl)
+        end
+
         if target == :dos_fermiliquid || target == :all
             fd = fig_dos(; kws...)
             save(joinpath(figure_path, "dos_fermiliquid.png"), fd)
@@ -54,6 +59,11 @@ function do_make(; figure_path=joinpath(pwd(), "figs"), target=:all, io=stderr, 
             save(joinpath(figure_path, "ibz.png"), fi)
         end
 
+        if target == :ibz2 || target == :all
+            fit = fig_ibz2(; kws...)
+            save(joinpath(figure_path, "ibz2.png"), fit)
+        end
+
         if target == :auxerr || target == :all
             fe = fig_err(; kws...)
             save(joinpath(figure_path, "auxerr.png"), fe)
@@ -72,6 +82,16 @@ function do_make(; figure_path=joinpath(pwd(), "figs"), target=:all, io=stderr, 
         if target == :onlyerr || target == :all
             feo = fig_err_only(; kws...)
             save(joinpath(figure_path, "onlyerr.png"), feo)
+        end
+
+        if target == :fsumrule || target == :all
+            fsm = fig_fsum(; kws...)
+            save(joinpath(figure_path, "fsumrule.png"), fsm)
+        end
+
+        if target == :ibz_resid || target == :all
+            fir = fig_ibz_resid(; kws...)
+            save(joinpath(figure_path, "ibz_resid.png"), fir)
         end
     end
     return

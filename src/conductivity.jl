@@ -3,14 +3,14 @@ using AutoBZ
 # h, Σ, β, and μ are fixed parameters
 # Ω is an interpolation parameter
 # bandwidth_bound should be the largest Ω of interest
-function conductivity_solver(; μ, bandwidth_bound, aux_inner_only=false, kws...)
+function conductivity_solver(; μ, bandwidth_bound, aux_inner_only=false, rescale_inner=false, kws...)
     (; velocity, selfenergy, choose_kω_order, quad_σ_k, quad_σ_ω, atol_σ, rtol_σ, nworkers, auxfun) = merge(default, NamedTuple(kws))
 
     hv, bz, info_velocity = velocity(; kws...)
     Σ, info_selfenergy = selfenergy(; kws...)
     β = invtemp(; kws...)
     is_order_kω = choose_kω_order(quad_σ_k, quad_σ_ω)
-    info = (; model_velocity=info_velocity, selfenergy=info_selfenergy, β, μ, quad_σ_ω, quad_σ_k, is_order_kω, atol_σ, rtol_σ, auxfun, aux_inner_only)
+    info = (; model_velocity=info_velocity, selfenergy=info_selfenergy, β, μ, quad_σ_ω, quad_σ_k, is_order_kω, atol_σ, rtol_σ, auxfun, aux_inner_only, rescale_inner_v2=rescale_inner)
 
     w = AutoBZCore.workspace_allocate_vec(hv, AutoBZCore.period(hv), Tuple(nworkers isa Int ? fill(nworkers, ndims(hv)) : nworkers))
     σ = if !is_order_kω
@@ -25,10 +25,12 @@ function conductivity_solver(; μ, bandwidth_bound, aux_inner_only=false, kws...
     else
         integrand = if auxfun === nothing
             _atol_σ = atol_σ
-            OpticalConductivityIntegrand(AutoBZ.lb(Σ), AutoBZ.ub(Σ), quad_σ_ω, w; Σ, β, μ, abstol=atol_σ/det(bz.B)/nsyms(bz), reltol=rtol_σ)
+            __atol_σ = rescale_inner ? _atol_σ/convergence(; kws...) : _atol_σ
+            OpticalConductivityIntegrand(AutoBZ.lb(Σ), AutoBZ.ub(Σ), quad_σ_ω, w; Σ, β, μ, abstol=__atol_σ/det(bz.B)/nsyms(bz), reltol=rtol_σ)
         else
             _atol_σ = AuxValue(atol_σ.val, (aux_inner_only ? Inf : 1.0)*atol_σ.aux)
-            AuxOpticalConductivityIntegrand(AutoBZ.lb(Σ), AutoBZ.ub(Σ), quad_σ_ω, w, auxfun; Σ, β, μ, abstol=atol_σ/det(bz.B)/nsyms(bz), reltol=rtol_σ)
+            __atol_σ = AuxValue((rescale_inner ? atol_σ.val/convergence(; kws...) : atol_σ.val), atol_σ.aux)
+            AuxOpticalConductivityIntegrand(AutoBZ.lb(Σ), AutoBZ.ub(Σ), quad_σ_ω, w, auxfun; Σ, β, μ, abstol=__atol_σ/det(bz.B)/nsyms(bz), reltol=rtol_σ)
         end
         IntegralSolver(integrand, bz, quad_σ_k; abstol=_atol_σ, reltol=rtol_σ)
     end
@@ -89,7 +91,7 @@ function benchmark_conductivity(; Ω, cache_file_bench_cond="cache-bench-cond.jl
         sol = σ(args...; kws...)
         # @show σ.alg
         # @show propertynames(σ.f.p[4].cache[1].rule)
-        if !(σ.alg isa AutoBZCore.AutoBZAlgorithm) && σ.f.p[4].alg isa AutoPTR
+        if !(σ.alg isa AutoBZCore.AutoBZAlgorithm) && σ.f.p[3] isa AutoPTR
             (; sol, numevals=gcnt[], npt=getnpt.(σ.f.p[4].cache))
         else
             (; sol, numevals=gcnt[])

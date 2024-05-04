@@ -25,7 +25,7 @@ function cache_hchebinterp(batchf, a, b, atol, rtol, initdiv, cache_path, key; c
         @debug "$call batch" batch_elapsed=dat.time batch_samples=nbatch
         dat.value
     end
-    stats = cache_call(hchebinterp, (f, a, b), (; atol, rtol, initdiv), cache_path, key; call, kws...)
+    stats = cache_call(hchebinterp, (f, a, b), (; atol, rtol, initdiv, maxevals=1000), cache_path, key; call, kws...)
     cnt > 0 && @debug "$call summary" elapsed=stats.time samples=cnt
     return stats.value
 end

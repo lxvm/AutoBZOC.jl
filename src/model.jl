@@ -13,7 +13,7 @@ function integerlattice_model(; kws...)
         C[CartesianIndex(ntuple(k -> k ≈ i ? j : 0, ndim))] = [t;;]
     end
 
-    info = (; name="integerlattice", t, ndim, gauge, prec)
+    info = (; name="integerlattice", t, ndim, gauge, prec, bzkind)
     d = ndim
     A = one(SMatrix{d,d,prec,d^2})
     bz = if bzkind isa IBZ
@@ -28,13 +28,62 @@ function integerlattice_model(; kws...)
     return HamiltonianInterp(AutoBZ.Freq2RadSeries(FourierSeries(C, period=prec(real(2one(t)*pi)))); gauge), bz, info
 end
 
-function random_model(; seed, nband, nmode, bzkind=FBZ(), kws...)
+function rot2d_model(; kws...)
+    (; t, gauge, prec, bzkind) = merge(default, NamedTuple(kws))
+    C = OffsetArray(zeros(SMatrix{1,1,typeof(prec(t)),1},ntuple(_ -> 3, 2)), repeat([-1:1], 2)...)
+    C[1,1] = C[-1,-1] = C[1,-1] = C[-1,1] = [-t;;]
+
+    info = (; name="rot2d", t, ndim=2, gauge, prec, bzkind)
+    d = 2
+    A = one(SMatrix{d,d,prec,d^2})
+    bz = load_bz(bzkind, SMatrix(A) * u"Å")
+    return HamiltonianInterp(AutoBZ.Freq2RadSeries(FourierSeries(C, period=prec(real(2one(t)*pi)))); gauge), bz, info
+end
+
+function flat2d_model(; kws...)
+    (; t, gauge, prec, bzkind) = merge(default, NamedTuple(kws))
+    C = OffsetArray(zeros(SMatrix{1,1,typeof(prec(t)),1},ntuple(_ -> 5, 2)), repeat([-2:2], 2)...)
+    C[1,0] = C[-1,0] = C[0,-1] = C[0,1] = [-t;;]
+    C[2,0] = C[-2,0] = C[0,-2] = C[0,2] = [t/4;;]
+
+    info = (; name="flat2d", t, ndim=2, gauge, prec, bzkind)
+    d = 2
+    A = one(SMatrix{d,d,prec,d^2})
+    bz = load_bz(bzkind, SMatrix(A) * u"Å")
+    return HamiltonianInterp(AutoBZ.Freq2RadSeries(FourierSeries(C, period=prec(real(2one(t)*pi)))); gauge), bz, info
+end
+
+function toymodel(; t1=1.0u"eV", t2=1.0u"eV", t′=0.0u"eV", V=1.0u"eV", kws...)
+    (; gauge, prec) = merge(default, NamedTuple(kws))
+    C = OffsetArray(zeros(SMatrix{2,2,typeof(prec(t1)),4}, 3), -1:1)
+    C[0] = [V zero(V); zero(V) zero(V)]
+    C[-1] = C[1] = [t1 t′; t′ t2]
+
+    bz = load_bz(FBZ(), one(SMatrix{1,1,prec,1}) * u"Å")
+
+    info = (; name="toy", t1, t2, t′, V, gauge, prec, ndim=1)
+    return HamiltonianInterp(AutoBZ.Freq2RadSeries(FourierSeries(C, period=prec(real(2one(t1)*pi)))); gauge), bz, info
+end
+
+function toy2model(; t1=1.0u"eV", t2=1.0u"eV", t′=0.0u"eV", V=1.0u"eV", kws...)
+    (; gauge, prec) = merge(default, NamedTuple(kws))
+    C = OffsetArray(zeros(SMatrix{2,2,typeof(prec(t1)),4}, 3), -1:1)
+    C[0] = [V t′; t′ zero(V)]
+    C[-1] = C[1] = [t1 zero(t′); zero(t′) t2]
+
+    bz = load_bz(FBZ(), one(SMatrix{1,1,prec,1}) * u"Å")
+
+    info = (; name="toy2", t1, t2, t′, V, gauge, prec, ndim=1)
+    return HamiltonianInterp(AutoBZ.Freq2RadSeries(FourierSeries(C, period=prec(real(2one(t1)*pi)))); gauge), bz, info
+end
+
+function random_model(; seed, nband, nmode, bzkind=FBZ(), soc=nothing, kws...)
     (; t, ndim, gauge, prec) = merge(default, NamedTuple(kws))
     Random.seed!(seed)
     d = ndim
     M = nmode
     T = SMatrix{nband,nband,typeof(prec(t)),nband^2}
-    info = (; name="random", t, seed, nband, ndim, nmode, prec, bzkind)
+    info = (; name="random", t, seed, nband, ndim, nmode, prec, bzkind, soc)
     hm = Vector{T}(undef, 2M+1)
     hm_ = rand(T, ntuple(_->2M+1,ndim)...)
     o = CartesianIndex(ntuple(_->M+1, ndim)...)
@@ -42,9 +91,12 @@ function random_model(; seed, nband, nmode, bzkind=FBZ(), kws...)
     bzkind isa FBZ || @warn "random Fourier series has no symmetries. For correctness use bzkind=FBZ()"
     A = one(SMatrix{d,d,prec,d^2})
     bz = load_bz(bzkind, SMatrix(A) * u"Å")
-    return HamiltonianInterp(AutoBZ.Freq2RadSeries(FourierSeries(hm, period=prec(real(2one(t)*pi)), offset=-M-1)); gauge), bz, info
+    return if soc === nothing
+        HamiltonianInterp(AutoBZ.Freq2RadSeries(FourierSeries(hm, period=prec(real(2one(t)*pi)), offset=-M-1)); gauge), bz, info
+    else
+        SOCHamiltonianInterp(AutoBZ.Freq2RadSeries(AutoBZ.WrapperFourierSeries(AutoBZ.wrap_soc, FourierSeries(hm, period=prec(real(2one(t)*pi)), offset=-M-1))), soc; gauge), bz, info
+    end
 end
-
 
 function ogmodel(; kws...)
 
@@ -89,7 +141,7 @@ function ogmodel(; kws...)
     return FourierSeries(H, period=real(2one(t)*pi))
 end
 
-function t2g_model(; kws...)
+function t2g_model(; whichperm=1, kws...)
 
     (; t, t′, Δ, ndim, gauge, prec, bzkind) = merge(default, NamedTuple(kws))
     info = (; name=:t2g, ndim, t, t′, Δ, gauge, bzkind, prec)
@@ -152,14 +204,109 @@ function t2g_model(; kws...)
             0.5 0.0 0.5
             0.5 0.5 0.0
         ]
-        load_bz(bzkind, bz.A, bz.B, atom_species, atom_pos')
-        # TODO change units of A, B
+        _bz = load_bz(bzkind, SMatrix(A), AutoBZCore.canonical_reciprocal_basis(SMatrix(A)), atom_species, atom_pos')
+        info = (; info..., whichperm)
+        SymmetricBZ(_bz.A * u"Å", _bz.B * u"Å^-1", _rot!(_bz.lims, whichperm), _bz.syms)
     else
         load_bz(bzkind, SMatrix(A) * u"Å")
     end
     return HamiltonianInterp(AutoBZ.Freq2RadSeries(FourierSeries(similar(H, SM) .= H; period=prec(real(2one(t)*pi)))); gauge), bz, info
 end
 
+
+function twohopping_model(; ts=(), Δs=map(zero, ts), kws...)
+
+    (; t′, ndim, gauge, prec, bzkind) = merge(default, NamedTuple(kws))
+    info = (; name=:twohopping, ndim, ts, t′, Δs, gauge, bzkind, prec)
+    d = length(ts)
+    SM = SHermitianCompact{d,typeof(prec(first(ts))),StaticArrays.triangularnumber(d)}
+    # SM = SMatrix{d,d,typeof(prec(t)),d^2}
+    MM = MMatrix{d,d,typeof(prec(first(ts))),d^2}
+    A = MM[zero(MM) for _ in Iterators.product(ntuple(_->1:3,Val(d))...)]
+    H = OffsetArray(A, ntuple(_->-1:1,Val(d))...)
+
+    # intraband hoppings
+    for (i, t) in enumerate(ts)
+        idx = CartesianIndex((ntuple(j -> j==i ? 1 : 0, Val(d))))
+        # h = StaticArrays.sacollect(SM, (m == n && m != i) ? t : zero(t) for m in 1:d, n in 1:d)
+        for n in 1:d
+            n == i && continue
+            H[ idx][n,n] = t
+            H[-idx][n,n] = conj(t)
+        end
+    end
+
+    # interband hoppings
+    # related to all possible ways to connect orbital pairs along coordinate axes, accounting for
+    # orientation with sign flips
+    for i in CartesianIndices(H)
+        j = findfirst(iszero, i.I)
+        j === nothing && continue
+        count(==(1)∘abs, i.I) == d-1 || continue
+        h = H[i]
+        par = prod(i.I[n] for n in eachindex(i.I) if n != j; init=1)
+        for k in PermGen(d-1)
+            idx = CartesianIndex(ntuple(l -> k[l]>=j ? k[l]+1 : k[l], Val(d-1)))
+            h[idx] = par*(sign(k)>0 ? t′ : conj(t′))
+        end
+    end
+
+    for (i, Δ) in enumerate(Δs)
+        H[CartesianIndex(ntuple(zero,Val(d)))][i,i] += Δ
+    end
+    A = one(SMatrix{d,d,prec,d^2})# * δ^(-1/(d-1))
+
+    #=
+    # construct corresponding Brillouin zone
+    # TODO: return InversionSymIBZ
+    !iszero(Δ) && bzkind isa CubicSymIBZ && error("nonzero CFS breaks cubic symmetry in BZ, try bzkind=InversionSymIBZ()")
+    bz = if bzkind isa IBZ
+        @assert ndim == 3
+        atom_species = [
+            "Sr",
+            "V",
+            "O",
+            "O",
+            "O",
+        ]
+        atom_pos = [
+            0.0 0.0 0.0
+            0.5 0.5 0.5
+            0.0 0.5 0.5
+            0.5 0.0 0.5
+            0.5 0.5 0.0
+        ]
+        _bz = load_bz(bzkind, SMatrix(A), AutoBZCore.canonical_reciprocal_basis(SMatrix(A)), atom_species, atom_pos')
+        info = (; info..., whichperm)
+        SymmetricBZ(_bz.A * u"Å", _bz.B * u"Å^-1", _rot!(_bz.lims, whichperm), _bz.syms)
+    else
+    end
+    =#
+    bz = load_bz(bzkind, SMatrix(A) * u"Å")
+    return HamiltonianInterp(AutoBZ.Freq2RadSeries(FourierSeries(similar(H, SM) .= H; period=prec(real(2one(first(ts))*pi)))); gauge), bz, info
+end
+
+
+function t2g_model_kz(; kz, kdim=Val(3), kws...)
+    h, bz, info = t2g_model(; kws...)
+    hz = FourierSeriesEvaluators.contract(h, kz, kdim)
+    # @show bz.lims kz
+    # @show kz info.whichperm
+    lz = IteratedIntegration.fixandeliminate(bz.lims, kz, kdim)
+    bzz = SymmetricBZ(bz.A, bz.B, lz, bz.syms)
+    return hz, bzz, (; info..., kz, kdim, ndim=info.ndim-1)
+end
+function t2g_model_kz_ky(; kz, ky, kzdim=Val(3), kydim=Val(2), kws...)
+    h, bz, info = t2g_model(; kws...)
+    hz = FourierSeriesEvaluators.contract(h, kz, kzdim)
+    hyz = FourierSeriesEvaluators.contract(hz, ky, kydim)
+    # @show bz.lims kz
+    # @show kz info.whichperm
+    lz = IteratedIntegration.fixandeliminate(bz.lims, kz, kzdim)
+    lyz = IteratedIntegration.fixandeliminate(lz, ky, kydim)
+    byz = SymmetricBZ(bz.A, bz.B, lyz, bz.syms)
+    return hyz, byz, (; info..., kz, kzdim, ky, kydim, ndim=info.ndim-2)
+end
 
 function fermiliquid_selfenergy(; T, kws...)
     (; t, T₀, Z, prec, lims_Σ) = merge(default, NamedTuple(kws))
@@ -213,6 +360,82 @@ function wannier90_model(; seed, bzkind=FBZ(), config_wannier90=(;), kws...)
     h = h_ isa SOCHamiltonianInterp ? AutoBZ.SOCHamiltonianInterp(f, h_.λ; gauge) : HamiltonianInterp(f; gauge)
     bz = SymmetricBZ(bz_.A * u"Å", bz_.B / u"Å", bz_.lims, bz_.syms)
     return h, bz, info
+end
+
+function wannier90_model_ibzperm(; seed, bzkind=IBZ(), whichperm=1, config_wannier90=(;), kws...)
+    (; gauge, prec) = merge(default, NamedTuple(kws))
+    info = (; name=:wannier90, seed, gauge, bzkind, whichperm, prec, config_wannier90...)
+    h_, bz_ = load_wannier90_data(seed; gauge, bz=bzkind, precision=prec, config_wannier90...)
+    f_ = AutoBZ.parentseries(h_)
+    f = AutoBZ.Freq2RadSeries(f_ isa FourierSeries ? FourierSeries(f_.c * u"eV"; period=f_.t, offset=f_.o, deriv=f_.a) : f_ isa AutoBZ.WrapperFourierSeries ? AutoBZ.WrapperFourierSeries(f_.w, FourierSeries(f_.s.c * u"eV"; period=f_.s.t, offset=f_.s.o, deriv=f_.s.a)) : error("not implemented"))
+    h = h_ isa SOCHamiltonianInterp ? AutoBZ.SOCHamiltonianInterp(f, h_.λ; gauge) : HamiltonianInterp(f; gauge)
+    bz = SymmetricBZ(bz_.A * u"Å", bz_.B / u"Å", _rot!(bz_.lims, whichperm), bz_.syms)
+    return h, bz, info
+end
+
+function _rot!(lims, perm)
+    itr = AutoBZCore.permutation_matrices(Val(3))
+    S = first(Iterators.drop(itr, perm-1))
+    if hasfield(typeof(lims), :face_coord)
+        foreach(lims.face_coord) do x
+            # @show size(x)
+            xx = x * S'
+            p = SymmetryReduceBZ.Utilities.sortpts_perm(xx')
+            x .= xx[p, :]
+        end
+        empty!(lims.segs)
+        append!(lims.segs, get_segs(reduce(vcat, lims.face_coord)))
+    else
+        error("unsupported")
+    end
+    # @show lims.segs
+    # test_pg_vert_from_zslice(0.2, lims.face_coord)
+    lims
+end
+
+function test_pg_vert_from_zslice(z::Float64, face_coord::Vector{Matrix{Float64}})
+
+    pg_vert = Vector{Vector{Float64}}() # Matrix of vertices of the polygon
+    for i = 1:length(face_coord) # Loop through faces
+      face = face_coord[i]
+
+      # Loop through ordered pairs of vertices in the face, and check whether the
+      # line segment connecting them intersects the z plane.
+      nvi = size(face, 1)
+      for j = 1:nvi
+        jp1 = mod1(j + 1, nvi)
+        z1 = face[j, 3]
+        z2 = face[jp1, 3]
+        if (z1 <= z && z2 >= z) || (z1 >= z && z2 <= z)
+          # Find the point of intersection and add it to the list of polygon
+          # vertices
+          t = (z - z1) / (z2 - z1)
+          # dot syntax removes some allocations/array copies as do views
+          v = @. t * @view(face[jp1, 1:2]) + (1 - t) * @view(face[j, 1:2])
+          push!(pg_vert, v)
+        end
+      end
+    end
+    pg_vert
+    return
+end
+
+function get_segs(vert::AbstractMatrix)
+    rtol = atol = sqrt(eps(eltype(vert)))
+    uniquepts=Vector{eltype(vert)}(undef, size(vert, 1))
+    numpts = 0
+    for i in axes(vert,1)
+        v = vert[i,end]
+        test = isapprox(v, atol=atol, rtol=rtol)
+        if !any(test, @view(uniquepts[begin:begin+numpts-1,end]))
+            numpts += 1
+            uniquepts[numpts] = v
+        end
+    end
+    @assert numpts >= 2 uniquepts
+    resize!(uniquepts,numpts)
+    sort!(uniquepts)
+    return uniquepts
 end
 
 default_kω_order(alg_k, alg_ω) = !(alg_k isa AutoPTR || alg_k isa PTR)
@@ -283,6 +506,27 @@ function model_velocity(; kws...)
     info = (; info_model..., vcomp, gauge, coord)
     return hv, bz, info
 end
+function t2g_model_kz_velocity(; kz, kdim=Val(3), kws...)
+    (; vcomp, gauge, coord) = merge(default, NamedTuple(kws))
+    h, bz, info = t2g_model(; kws..., gauge=Wannier())
+    hv = GradientVelocityInterp(h, bz.A; coord, vcomp, gauge)
+    hvz = FourierSeriesEvaluators.contract(hv, kz, kdim)
+    lz = IteratedIntegration.fixandeliminate(bz.lims, kz, kdim)
+    bzz = SymmetricBZ(bz.A, bz.B, lz, bz.syms)
+    return hvz, bzz, (; info..., kz, kdim, ndim=info.ndim-1)
+end
+
+function t2g_model_kz_ky_velocity(; kz, ky, kzdim=Val(3), kydim=Val(2), kws...)
+    (; vcomp, gauge, coord) = merge(default, NamedTuple(kws))
+    h, bz, info = t2g_model(; kws..., gauge=Wannier())
+    hv = GradientVelocityInterp(h, bz.A; coord, vcomp, gauge)
+    hvz = FourierSeriesEvaluators.contract(hv, kz, kzdim)
+    hvyz = FourierSeriesEvaluators.contract(hvz, ky, kydim)
+    lz = IteratedIntegration.fixandeliminate(bz.lims, kz, kzdim)
+    lyz = IteratedIntegration.fixandeliminate(lz, ky, kydim)
+    byz = SymmetricBZ(bz.A, bz.B, lyz, bz.syms)
+    return hvyz, byz, (; info..., kz, kzdim, ky, kydim, ndim=info.ndim-1)
+end
 
 function wannier90_velocity(; seed, bzkind=FBZ(), config_wannier90_velocity=(;), kws...)
     (; gauge, vcomp, coord, prec) = merge(default, NamedTuple(kws))
@@ -294,7 +538,7 @@ function wannier90_velocity(; seed, bzkind=FBZ(), config_wannier90_velocity=(;),
         f_ = AutoBZ.parentseries(h_)
         f = AutoBZ.Freq2RadSeries(f_ isa FourierSeries ? FourierSeries(f_.c * u"eV"; period=f_.t, offset=f_.o, deriv=f_.a) : f_ isa AutoBZ.WrapperFourierSeries ? AutoBZ.WrapperFourierSeries(f_.w, FourierSeries(f_.s.c * u"eV"; period=f_.s.t, offset=f_.s.o, deriv=f_.s.a)) : error("not implemented"))
         h = h_ isa SOCHamiltonianInterp ? AutoBZ.SOCHamiltonianInterp(f, h_.λ; gauge=AutoBZ.gauge(h_)) : HamiltonianInterp(f; gauge=AutoBZ.gauge(h_))
-        hv = GradientVelocityInterp(h, bz.A; gauge, coord, vcomp)
+        hv = GradientVelocityInterp(h, bz.A; gauge=AutoBZ.gauge(hv_), coord=AutoBZ.coord(hv_), vcomp=AutoBZ.vcomp(hv_))
     elseif hv_ isa CovariantVelocityInterp
         a_ = hv_.a
         a = BerryConnectionInterp{AutoBZ.CoordDefault(typeof(a_))}(AutoBZ.coord(a_) isa Cartesian ? ManyFourierSeries(map(f -> f isa FourierSeries ? FourierSeries(f.c * u"Å"; period=f.t, offset=f.o, deriv=f.a) : f isa AutoBZ.WrapperFourierSeries ? AutoBZ.WrapperFourierSeries(f.w, FourierSeries(f.s.c * u"Å"; period=f.s.t, offset=f.s.o, deriv=f.s.a)) : error("not implemented"), a_.a.s)...; period=AutoBZ.period(a_.a)) : a_.a, bz.B; coord=AutoBZ.coord(a_))
@@ -302,7 +546,7 @@ function wannier90_velocity(; seed, bzkind=FBZ(), config_wannier90_velocity=(;),
         f_ = AutoBZ.parentseries(h_)
         f = AutoBZ.Freq2RadSeries(f_ isa FourierSeries ? FourierSeries(f_.c * u"eV"; period=f_.t, offset=f_.o, deriv=f_.a) : f_ isa AutoBZ.WrapperFourierSeries ? AutoBZ.WrapperFourierSeries(f_.w, FourierSeries(f_.s.c * u"eV"; period=f_.s.t, offset=f_.s.o, deriv=f_.s.a)) : error("not implemented"))
         h = h_ isa SOCHamiltonianInterp ? AutoBZ.SOCHamiltonianInterp(f, h_.λ; gauge=AutoBZ.gauge(h_)) : HamiltonianInterp(f; gauge=AutoBZ.gauge(h_))
-        hv = CovariantVelocityInterp(GradientVelocityInterp(h, bz.A; gauge=AutoBZ.gauge(hv_.hv), coord=AutoBZ.coord(hv_.hv), vcomp=AutoBZ.vcomp(hv_.hv)), a; gauge, vcomp, coord)
+        hv = CovariantVelocityInterp(GradientVelocityInterp(h, bz.A; gauge=AutoBZ.gauge(hv_.hv), coord=AutoBZ.coord(hv_.hv), vcomp=AutoBZ.vcomp(hv_.hv)), a; gauge=AutoBZ.gauge(hv_), coord=AutoBZ.coord(hv_), vcomp=AutoBZ.vcomp(hv_))
     else
         error("configure velocity interpolant with config_wannier90_velocity keyword")
     end
