@@ -356,7 +356,7 @@ function wannier90_model(; seed, bzkind=FBZ(), config_wannier90=(;), kws...)
     info = (; name=:wannier90, seed, gauge, bzkind, prec, config_wannier90...)
     h_, bz_ = load_wannier90_data(seed; gauge, bz=bzkind, precision=prec, config_wannier90...)
     f_ = AutoBZ.parentseries(h_)
-    f = AutoBZ.Freq2RadSeries(f_ isa FourierSeries ? FourierSeries(f_.c * u"eV"; period=f_.t, offset=f_.o, deriv=f_.a) : f_ isa AutoBZ.WrapperFourierSeries ? AutoBZ.WrapperFourierSeries(f_.w, FourierSeries(f_.s.c * u"eV"; period=f_.s.t, offset=f_.s.o, deriv=f_.s.a)) : error("not implemented"))
+    f = AutoBZ.Freq2RadSeries(h_ isa SOCHamiltonianInterp ? AutoBZ.WrapperFourierSeries(AutoBZ.wrap_soc, FourierSeries(f_.c * u"eV"; period=f_.t, offset=f_.o, deriv=f_.a)) : FourierSeries(f_.c * u"eV"; period=f_.t, offset=f_.o, deriv=f_.a))
     h = h_ isa SOCHamiltonianInterp ? AutoBZ.SOCHamiltonianInterp(f, h_.λ; gauge) : HamiltonianInterp(f; gauge)
     bz = SymmetricBZ(bz_.A * u"Å", bz_.B / u"Å", bz_.lims, bz_.syms)
     return h, bz, info

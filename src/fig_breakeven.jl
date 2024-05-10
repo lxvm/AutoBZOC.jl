@@ -4,7 +4,7 @@ function do_fig_breakeven(bench_func, xlabel, ylabels...; config_quad_breakeven,
         fontsize=80,
         linewidth=8,
     )
-    axs = map(enumerate(ylabels)) do (i, ylabel)
+    axs = map(enumerate(ylabels)) do (i, (; ylabel, limits))
         Axis(fig[i,1];
             xlabel,
             ylabel,
@@ -17,6 +17,7 @@ function do_fig_breakeven(bench_func, xlabel, ylabels...; config_quad_breakeven,
             ylabelsize = 90,
             yticksize = 15,
             ytickwidth = 4,
+            limits
         )
     end
 
@@ -53,16 +54,19 @@ function do_fig_breakeven(bench_func, xlabel, ylabels...; config_quad_breakeven,
         end
     end
     alphabet = 'a':'z'
-    map(((i, ax),) -> Legend(fig[i,1], ax, string(alphabet[i]); tellheight=false, tellwidth=false, halign=:left, valign=:bottom, margin=(10,10,10,10),                 patchsize = (100f0, 100f0),
-    patchlabelgap = 15,
-    framewidth=4,), enumerate(axs))
+    map(((i, ax),) -> Legend(fig[i,1], ax, string(alphabet[i]); tellheight=false, tellwidth=false, halign=:left, valign=:bottom, margin=(20,20,20,20),
+    patchsize = (100f0, 100f0), patchlabelgap = 15,
+    framevisible=false,), enumerate(axs))
 
     return fig
 end
 
-function fig_breakeven(; getpart=getval, kws...)
+function fig_breakeven(; getpart=getval, limits_t=(nothing, nothing), limits_n=(nothing, nothing), kws...)
     (; selfenergy, chempot) = merge(default, NamedTuple(kws))
-    do_fig_breakeven(L"$\eta$ (eV)", "Wall clock time (s)", "# integrand evaluations"; kws...) do config_bench, series_T, series_atol_σ
+    do_fig_breakeven(L"$\eta$ (eV)",
+        (; ylabel="Wall clock time (s)", limits=limits_t),
+        (; ylabel="# integrand evaluations", limits=limits_n)
+        ; kws...) do config_bench, series_T, series_atol_σ
         x = Float64[]
         tdat = Float64[]
         ndat = Int[]
@@ -79,6 +83,7 @@ function fig_breakeven(; getpart=getval, kws...)
             haskey(stats.min.value, :npt) && @show stats.min.value.npt
             # push!(vdat, norm(getpart(first(stats.samples).value)))
         end
+        @show x tdat ndat
         return x, tdat, ndat#, vdat
     end
 end
@@ -107,9 +112,13 @@ function fig_breakeven_trgloc(; config_quad_breakeven_trgloc, config_scaling_bre
     end
 end
 
-function fig_breakeven_log(; getpart=getval, kws...)
+function fig_breakeven_log(; getpart=getval, limits_t=(nothing, nothing), limits_n=(nothing, nothing), kws...)
     (; selfenergy, chempot) = merge(default, NamedTuple(kws))
-    do_fig_breakeven(L"$|\log(\eta)|$", "Wall clock time (s)", "# integrand evaluations"; kws...) do config_bench, series_T, series_atol_σ
+    do_fig_breakeven(L"$|\log(\eta)|$",
+    
+    (; ylabel="Wall clock time (s)", limits=limits_t),
+    (; ylabel="# integrand evaluations", limits=limits_n),
+    ; kws...) do config_bench, series_T, series_atol_σ
         x = Float64[]
         tdat = Float64[]
         ndat = Int[]
