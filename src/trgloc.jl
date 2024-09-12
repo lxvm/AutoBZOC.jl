@@ -10,13 +10,13 @@ function trgloc_solver(; μ, kws...)
     info = (; model=info_model, selfenergy=info_selfenergy, μ, quad_g_k, atol_g, rtol_g)
 
     w = AutoBZCore.workspace_allocate_vec(h, AutoBZCore.period(h), Tuple(nworkers isa Int ? fill(nworkers, ndims(h)) : nworkers))
-    integrand = DOSIntegrand(w; Σ, μ)
-    # integrand = TrGlocIntegrand(w; Σ, μ)
+    # integrand = DOSIntegrand(w; Σ, μ)
+    integrand = TrGlocIntegrand(w; Σ, μ)
     g = IntegralSolver(integrand, bz, quad_g_k; abstol=atol_g, reltol=rtol_g)
     return g, info
 end
 
-function trgloc_interp(; cache_file_interp_gloc="cache-interp-gloc.jld2", kws...)
+function trgloc_interp(; cache_file_interp_gloc="cache-interp-gloc.jld2", initdiv=1, kws...)
     (; lims_ω, atol_g, rtol_g, interp_tolratio, prec, cache_dir, nthreads) = merge(default, NamedTuple(kws))
 
     g, info_solver = trgloc_solver(; kws..., atol_g=atol_g/interp_tolratio, rtol_g=rtol_g/interp_tolratio)
@@ -26,10 +26,10 @@ function trgloc_interp(; cache_file_interp_gloc="cache-interp-gloc.jld2", kws...
     lb, ub = map(prec, lims_ω)
     cache_path = joinpath(cache_dir, cache_file_interp_gloc)
     @info "Green's function interpolation" info...
-    g_interp = cache_hchebinterp(lb, ub, atol_g, rtol_g, cache_path, id) do ω
+    g_interp = cache_hchebinterp(lb, ub, atol_g, rtol_g, initdiv, cache_path, id) do ω
         batchsolve(g, paramzip(; ω); nthreads=nthreads)
     end
-    return ((; ω) -> g_interp(ω)), info
+    return ((; ω) -> g_interp(ω)), info, g_interp
 end
 
 function trgloc_batchsolve(; series_ω, cache_file_values_gloc="cache-values-gloc.jld2", kws...)

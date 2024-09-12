@@ -50,6 +50,7 @@ function conductivity_interp(; cache_file_interp_cond="cache-interp-cond.jld2", 
     σ_interp = cache_hchebinterp(lb, ub, atol_σ, rtol_σ, initdiv, cache_path, id; kws...) do Ω
         batchsolve(σ, paramzip(; Ω); nthreads=nthreads)
     end
+    ref[] = σ_interp
     return ((; Ω) -> σ_interp(Ω)), info, σ_interp
 end
 

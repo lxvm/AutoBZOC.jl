@@ -1,3 +1,5 @@
+const ref = Ref{Any}()
+
 function fig3(; colormap=:thermal, lims_y=(0,100), inset_Ω=nothing, inset_lims_x=nothing, inset_lims_y=nothing, kws...)
     (; scalar_func, scalar_text, chempot, series_T, lims_Ω, N_Ω, unit_σ, factor_σ, nsp, ndim, config_vcomp, interp_Ω) = merge(default, NamedTuple(kws))
 
@@ -12,7 +14,7 @@ function fig3(; colormap=:thermal, lims_y=(0,100), inset_Ω=nothing, inset_lims_
     ax = Axis(fig[1,1];
         # title="Fermi liquid optical conductivity",
         xlabel=L"$\Omega$ %$(_unit_Lstr(unit_Ω))",
-        xticks=(unique!(Iterators.flatten((getproperty.(config_vcomp, :Ω), lims_Ω)) ./ unit_Ω), [string(isinteger(s) ? Int(s) : s) for s in unique!(Iterators.flatten((getproperty.(config_vcomp, :Ω), lims_Ω)) ./ unit_Ω)]),
+        xticks=([0.0, 0.2, 0.4, 0.6, 0.8, 1.0], ["0", "0.2", "0.4", "0.6", "0.8", "1"]),#(unique!(Iterators.flatten((getproperty.(config_vcomp, :Ω), lims_Ω)) ./ unit_Ω), [string(isinteger(s) ? Int(s) : s) for s in unique!(Iterators.flatten((getproperty.(config_vcomp, :Ω), lims_Ω)) ./ unit_Ω)]),
         ylabel=L"%$(scalar_text) %$(_unit_Lstr(unit_σ))",
         limits=(lims_Ω ./ unit_Ω, lims_y),
         spinewidth = 4,
@@ -26,9 +28,9 @@ function fig3(; colormap=:thermal, lims_y=(0,100), inset_Ω=nothing, inset_lims_
     min_Ω, i = findmin(series_Ω)
     inset = inset_axis!(fig, ax;
         extent = (0.45, 0.75, 0.65, 0.95),
-        xlabel=L"$T$",
-        xticks = LogTicks(WilkinsonTicks(3, k_min = 3)),
-        xscale=log2,
+        xlabel=L"$T$ (K)",
+        xticks = LogTicks(WilkinsonTicks(4, k_min=4, k_max = 4)),
+        xscale=log10,
         xticksize = 15,
         xtickwidth = 4,
         yticks = LogTicks(WilkinsonTicks(3, k_min = 3, k_max=3)),
@@ -59,7 +61,7 @@ function fig3(; colormap=:thermal, lims_y=(0,100), inset_Ω=nothing, inset_lims_
         end .|> scalar_func .|> σ -> σ*(nsp*factor_σ/(2pi)^ndim/unit_σ) .|> upreferred
         data_σ0 = σ0 |> scalar_func |> σ -> σ*(nsp*factor_σ/(2pi)^ndim/unit_σ) |> upreferred
         lines!(ax, series_Ω ./ unit_Ω,  data_σ, label=L"%$(ustrip(T))", color=colors[1-log(Tmax/T)/log(Tmax/Tmin)])
-        scatter!(inset, T ./ unit_T, data_σ0, color=colors[1-log(Tmax/T)/log(Tmax/Tmin)], markersize = 40)
+        scatter!(inset, T ./ unit_T, data_σ0, color=colors[1-log(Tmax/T)/log(Tmax/Tmin)], markersize = 50)
     end
     axislegend(ax, ax, L"$T$ (%$(unit_T))";
         framewidth=4,

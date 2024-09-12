@@ -1,4 +1,4 @@
-using GLMakie
+# using GLMakie
 using Brillouin
 using SymmetryReduceBZ
 using Polyhedra: Polyhedron, Mesh, points, polyhedron, vrep
@@ -132,7 +132,7 @@ function fig_ibz2(;colormap=:Spectral, N_k=30, sgnum=76, whichsym=13, pol=1,
     return fig
 end
 
-using GLMakie
+# using GLMakie
 using Brillouin
 using SymmetryReduceBZ
 using Polyhedra: Polyhedron, Mesh, points, polyhedron, vrep

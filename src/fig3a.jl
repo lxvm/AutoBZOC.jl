@@ -5,7 +5,7 @@ using Brillouin: interpolate
 using ColorSchemes, Colors
 using LaTeXStrings
 
-function fig3a(; alpha=1.0, alpha_ramp = range(0, 1, length=256), ylims=(0, 50),
+function fig3a(; alpha=1.0, alpha_ramp = range(0, 1, length=256), ylims=(0, 50), series_kws = (; linewidth=8),
     cache_file_interp_cond_k="cache-interp-cond-k.jld2", cache_file_interp_cond_ω="cache-interp-cond-ω.jld2",
     cache_file_values_cond_k="cache-values-cond-k.jld2", cache_file_values_cond_ω="cache-values-cond-ω.jld2",
     kws...)
@@ -51,9 +51,10 @@ function fig3a(; alpha=1.0, alpha_ramp = range(0, 1, length=256), ylims=(0, 50),
     axislegend(ax,
         [LineElement(; color) for (; color) in config_vcomp],
         [label for (;label) in config_vcomp],
-        string(alphabet[1]),
+        string('(', alphabet[1], ')'),
         width = Relative(0.4),
         position = :rt,
+        titlefont = :regular,
         framewidth=4,
         patchsize = (100f0, 100f0),
         patchlabelgap = 15,
@@ -96,23 +97,25 @@ function fig3a(; alpha=1.0, alpha_ramp = range(0, 1, length=256), ylims=(0, 50),
 
             subgl_right[2i,1] = ax_vcomp = Axis(fig;
                 # xlabel=L"Spectral density of %$(scalar_text) at $\Omega$ = %$Ω, T = %$T",
-                # ylabel=L"$\omega$ %$(_unit_Lstr(unit_ω))",
+                ylabel=L"$\omega$",
                 xticks=ticks_k,
                 yticks=ticks_ω,
                 limits = (extrema(kloc), lims_ω ./ unit_ω),
                 spinewidth = 4,
-                ylabelsize = 75,
+                xlabelsize = 80,
                 xtickalign = 0,
                 xticksize = 15,
                 xtickwidth = 4,
+                ylabelsize = 80,
                 ytickalign = 0,
                 yticksize = 15,
                 ytickwidth = 4,
             )
 
-            kpathinterpplot!(ax_vcomp, kps, series_ω, σ; alpha, densitycolormap)
             AutoBZ.shift!(σ.w.series, μ)
-            # kpathinterpplot!(ax_vcomp, kps, AutoBZ.parentseries(σ.w.series); series_kws = (; linewidth=8))
+            kpathinterpplot!(ax_vcomp, kps, AutoBZ.parentseries(σ.w.series); series_kws)
+            AutoBZ.shift!(σ.w.series, -μ)
+            kpathinterpplot!(ax_vcomp, kps, series_ω, σ; alpha, densitycolormap)
 
             prec_v = x -> map(prec, x)
             data_σ_k = if interp_k
@@ -134,13 +137,13 @@ function fig3a(; alpha=1.0, alpha_ramp = range(0, 1, length=256), ylims=(0, 50),
             end .|> scalar_func
 
             subgl_right[2i-1,1] = ax_vcomp_k = Axis(fig;
-                ylabel=L"$\int$ %$(scalar_text) $\mathrm{d} \omega$",
+                ylabel=L"%$(scalar_text)$(\mathbf{k})$",
                 limits=(extrema(kloc), nothing),
                 spinewidth = 4,
                 xticks=ticks_k[1],
                 yticksvisible=false,
                 yticklabelsvisible=false,
-                ylabelsize = 60,
+                ylabelsize = 80,
                 xticksize = 15,
                 xtickwidth = 4,
             )
@@ -174,13 +177,13 @@ function fig3a(; alpha=1.0, alpha_ramp = range(0, 1, length=256), ylims=(0, 50),
             end .|> scalar_func
 
             subgl_right[2i,2] = ax_vcomp_ω = Axis(fig;
-                xlabel=L"$\int$ %$(scalar_text) $\mathrm{dk}$",
+                xlabel=L"%$(scalar_text)$(\omega)$",
                 xticksvisible=false,
                 xticklabelsvisible=false,
                 spinewidth = 4,
                 yticks=ticks_ω[1],
                 limits = (nothing, lims_ω ./ unit_ω),
-                xlabelsize = 60,
+                xlabelsize = 80,
                 yticksize = 15,
                 ytickwidth = 4,
             )
@@ -192,7 +195,8 @@ function fig3a(; alpha=1.0, alpha_ramp = range(0, 1, length=256), ylims=(0, 50),
             subgl_right[2i-1,2] = Legend(fig,
                 [LineElement(; color, linewidth = 8)],
                 [label],
-                string(alphabet[i+1]),
+                string('(', alphabet[i+1], ')'),
+                titlefont = :regular,
                 width = Relative(1),
                 height = Relative(1),
                 patchsize = (100f0, 100f0),

@@ -101,8 +101,8 @@ default = (;
     series_Δ = u"eV" * range(-1, 1, length=21),
     config_vcomp = (
         (vcomp=Whole(), label="total",      color=:black,   densitycolormap=nothing,Ω=0.0u"eV", plot_trace=true,    plot_density=false, plot_ibz=false),
-        (vcomp=Intra(), label="intra-band", color=:orange,  densitycolormap=reverse(AutoBZOC.colormap("RdBu", 256; mid=0.9)),  Ω=0.0u"eV", plot_trace=true,    plot_density=true,  plot_ibz=false),
-        (vcomp=Inter(), label="inter-band", color=:green,   densitycolormap=reverse(AutoBZOC.colormap("RdBu", 256; mid=0.9)),  Ω=0.4u"eV", plot_trace=true,    plot_density=true,  plot_ibz=true),
+        (vcomp=Intra(), label="intraband", color=:orange,  densitycolormap=reverse(AutoBZOC.colormap("RdBu", 256; mid=0.9)),  Ω=0.0u"eV", plot_trace=true,    plot_density=true,  plot_ibz=false),
+        (vcomp=Inter(), label="interband", color=:green,   densitycolormap=reverse(AutoBZOC.colormap("RdBu", 256; mid=0.9)),  Ω=0.4u"eV", plot_trace=true,    plot_density=true,  plot_ibz=true),
     ),
     config_quad_breakeven = (;
         algs = (

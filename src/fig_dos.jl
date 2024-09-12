@@ -1,5 +1,7 @@
+const ref_dos = Ref{Any}()
+
 function fig_dos(; colormap=:thermal, lims_y=(0,8), kws...)
-    (; series_T, lims_ω, N_ω, nsp, ndim) = merge(default, NamedTuple(kws))
+    (; chempot, series_T, lims_ω, N_ω, nsp, ndim) = merge(default, NamedTuple(kws))
 
     series_ω = range(lims_ω..., length=N_ω)
     unit_ω = unit(eltype(series_ω))
@@ -11,12 +13,15 @@ function fig_dos(; colormap=:thermal, lims_y=(0,8), kws...)
     )
 
     Tmax = maximum(series_T)
+    μ1, = chempot(; kws..., T=Tmax)
+    _, _, initdiv = trgloc_interp(; kws..., T=Tmax, μ=μ1) # unroll first calc
     colors = cgrad(colormap)
     for T in reverse(sort(collect(series_T)))
-        μ, V, = findchempot(; kws..., T)
-        g, = trgloc_interp(; kws..., T, μ)
-        data_ρ = map(ω -> upreferred(-imag(g(; ω))/pi/V * nsp/(2pi)^ndim * u"eV"), series_ω)
+        μ, V, = chempot(; kws..., T)
+        g, _, initdiv = trgloc_interp(; kws..., T, μ, initdiv)
+        data_ρ = map(ω -> upreferred(-imag(g(; ω))/pi/V * nsp * u"eV"), series_ω)
         lines!(ax, series_ω ./ unit_ω, data_ρ, label="T=$T", color=colors[T/Tmax])
+        ref_dos[] = (V, initdiv)
     end
     axislegend(ax)
     return fig

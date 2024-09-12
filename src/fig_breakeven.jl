@@ -54,8 +54,8 @@ function do_fig_breakeven(bench_func, xlabel, ylabels...; config_quad_breakeven,
         end
     end
     alphabet = 'a':'z'
-    map(((i, ax),) -> Legend(fig[i,1], ax, string(alphabet[i]); tellheight=false, tellwidth=false, halign=:left, valign=:bottom, margin=(20,20,20,20),
-    patchsize = (100f0, 100f0), patchlabelgap = 15,
+    map(((i, ax),) -> Legend(fig[i,1], ax, string('(', alphabet[i], ')'); tellheight=false, tellwidth=false, halign=:left, valign=:bottom, margin=(20,20,20,20),
+    patchsize = (100f0, 100f0), patchlabelgap = 15, titlefont = :regular,
     framevisible=false,), enumerate(axs))
 
     return fig
@@ -115,7 +115,7 @@ end
 function fig_breakeven_log(; getpart=getval, limits_t=(nothing, nothing), limits_n=(nothing, nothing), kws...)
     (; selfenergy, chempot) = merge(default, NamedTuple(kws))
     do_fig_breakeven(L"$|\log(\eta)|$",
-    
+
     (; ylabel="Wall clock time (s)", limits=limits_t),
     (; ylabel="# integrand evaluations", limits=limits_n),
     ; kws...) do config_bench, series_T, series_atol_σ
