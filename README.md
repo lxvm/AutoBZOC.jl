@@ -7,6 +7,7 @@ Barnett and Sophie Beck](https://arxiv.org/abs/2406.15466).
 
 ## Running the code
 
+This code was originally run using Julia 1.10, which can be installed using [`juliaup`](https://github.com/JuliaLang/juliaup).
 Instantiate the Julia project in this repository and then run each of the
 scripts separately.
 ```bash
